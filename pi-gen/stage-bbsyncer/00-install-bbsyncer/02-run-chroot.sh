@@ -3,13 +3,27 @@
 
 HOTSPOT_IP="192.168.4.1"
 
-# Static IP on wlan0
-cat > /etc/network/interfaces.d/wlan0-static <<EOF
-auto wlan0
-iface wlan0 inet static
-    address ${HOTSPOT_IP}
-    netmask 255.255.255.0
+# Static IP on wlan0 via dhcpcd (standard RPi OS Bookworm networking)
+if [ -f /etc/dhcpcd.conf ]; then
+    cat >> /etc/dhcpcd.conf <<EOF
+
+# BBSyncer hotspot static IP
+interface wlan0
+static ip_address=${HOTSPOT_IP}/24
+nohook wpa_supplicant
 EOF
+else
+    # Fallback: systemd-networkd for non-dhcpcd images
+    mkdir -p /etc/systemd/network
+    cat > /etc/systemd/network/10-wlan0-static.network <<EOF
+[Match]
+Name=wlan0
+
+[Network]
+Address=${HOTSPOT_IP}/24
+EOF
+    systemctl enable systemd-networkd 2>/dev/null || true
+fi
 
 # hostapd config (defaults — overridden by firstboot from bbsyncer-config.txt)
 cat > /etc/hostapd/hostapd.conf <<EOF

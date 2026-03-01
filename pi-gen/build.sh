@@ -14,7 +14,7 @@ echo ""
 # Clone pi-gen if not present
 if [[ ! -d "$SCRIPT_DIR/pi-gen-repo" ]]; then
     echo "Cloning pi-gen..."
-    git clone --depth 1 https://github.com/RPi-Distro/pi-gen.git "$SCRIPT_DIR/pi-gen-repo"
+    git clone --depth 1 --branch bookworm https://github.com/RPi-Distro/pi-gen.git "$SCRIPT_DIR/pi-gen-repo"
 fi
 
 # Copy our config and stage into pi-gen

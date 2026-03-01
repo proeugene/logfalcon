@@ -1,6 +1,10 @@
 name: Build SD Card Image
 
 on:
+  push:
+    paths:
+      - 'pi-gen/**'
+      - '.github/workflows/build-image.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -78,7 +82,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'release'
         uses: actions/upload-artifact@v4
         with:
           name: bbsyncer-image

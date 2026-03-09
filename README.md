@@ -1,24 +1,22 @@
-# Betaflight Blackbox Field Syncer Site
+# LogFalcon — Website
 
-Simple single-page marketing site for the project.
+Marketing site for [LogFalcon](https://github.com/proeugene/betaflight-logfalcon),
+the field-ready blackbox log companion for Betaflight.
 
-## Local run
+**Live at:** https://proeugene.github.io/logfalcon/
+
+## Local development
 
 ```bash
-npm install
-npm run dev
+python3 -m http.server 3000
+# or
+npx serve .
 ```
 
 Then open `http://localhost:3000`.
 
-## Deploy notes
+## Deployment
 
-This site is fully static, so it works well on:
+Deployed automatically to GitHub Pages on push to `main` via
+`.github/workflows/pages.yml`.
 
-- Netlify
-- Vercel
-- Cloudflare Pages
-
-If you want a tiny Node server for local/dev hosting or simple platform deploys, use `npm run dev` or `npm start`.
-
-For static-host deployment, the publish/output directory is simply this folder.

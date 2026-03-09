@@ -75,7 +75,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - **Optional acceleration:** native C extension in `logfalcon/_native/_msp_fast.c`
 - **Protocol:** MSP
 - **Target hardware:** Raspberry Pi Zero W / Zero 2 W
-- **Current version:** `0.1.2`
+- **Current version:** `0.1.3`
 
 ## Major project areas
 
@@ -100,9 +100,9 @@ Both options require leaving the field or spending money on extra hardware. This
 
 ### Current validation status
 
-- automated tests passing: **86 tests**
+- automated tests passing: **159 tests**
 - lint and formatting checks passing
-- version bumped to **0.1.2**
+- version bumped to **0.1.3**
 - recent hardening completed in web security, docs, and status visibility
 
 ### Important scope boundary
@@ -112,6 +112,36 @@ This project is for **internal SPI flash blackbox** workflows.
 It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
+
+## v0.1.3
+
+### Critical Fixes
+- **Fixed show-stopper install path mismatch**: install.sh created `/opt/bbsyncer` but systemd units expected `/opt/logfalcon` — services would fail on fresh install
+- Renamed all stale bbsyncer paths across install.sh, pi-gen, firstboot, dnsmasq, avahi
+
+### Bug Fixes
+- Added threading.Lock to web server session cache (race condition)
+- Replaced bare `except Exception:` with specific types in HTTP handlers
+- Safe dict access in FC detector (prevents KeyError)
+- Log warning on corrupted manifest JSON (was silently skipped)
+- Extracted duplicate frame-flush code in MSP client (DRY)
+
+### Refactoring
+- Orchestrator: extracted 252-line `_run()` into 6 focused phase methods
+- Web server: extracted 526 lines of HTML templates to `_templates.py`
+- Server.py reduced from ~1100 to ~600 lines
+
+### UX Improvements
+- Styled HTML error pages (replaced plain text "404 Error")
+- Idle auto-shutdown countdown banner on web UI
+- Synced default SSID across all config files
+- Fixed site branding and download link
+
+### Test Coverage
+- Added 70 new tests (89 → 159 total, 79% increase)
+- New test files: test_msp_client.py (19), test_led_controller.py (24)
+- Expanded: test_manifest.py (1→17), test_web_server.py (+11)
+- CI coverage gate: --cov-fail-under=50
 
 ## v0.1.2
 

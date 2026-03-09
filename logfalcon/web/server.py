@@ -9,6 +9,7 @@ Routes:
   GET  /download/<session_id>/raw_flash.bbl
   GET  /download/<session_id>/manifest.json
   GET  /status                    JSON: current sync status
+  GET  /events                    SSE: real-time sync status stream
   DELETE /sessions/<session_id>   Delete a session from Pi
   GET  /generate_204              Android captive portal probe
   GET  /hotspot-detect.html       iOS/macOS captive portal probe
@@ -740,6 +741,8 @@ def _make_handler(storage_path: str) -> type:
                     self._send_json(_get_sessions(storage))
                 elif path == '/status':
                     self._send_json(get_status())
+                elif path == '/events':
+                    self._handle_sse()
                 elif path == '/health':
                     self._send_json(_health_payload(storage))
                 elif path.startswith('/download/'):
@@ -854,6 +857,27 @@ def _make_handler(storage_path: str) -> type:
             )
             log.info('Hotspot settings updated from %s to SSID=%s', self.client_address[0], ssid)
             self._send_html(_render_settings(msg))
+
+        def _handle_sse(self) -> None:
+            """Server-Sent Events stream — pushes sync status every 2 seconds."""
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('X-Accel-Buffering', 'no')
+            self.end_headers()
+            prev = None
+            try:
+                while True:
+                    status = get_status()
+                    payload = json.dumps(status)
+                    if payload != prev:
+                        self.wfile.write(f'data: {payload}\n\n'.encode())
+                        self.wfile.flush()
+                        prev = payload
+                    _time.sleep(2)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass  # Client disconnected
 
         def _handle_download(self, sub_path: str) -> None:
             # sub_path is "<session_id>/<filename>"

@@ -1,6 +1,6 @@
 # LogFalcon
 
-[![CI](https://github.com/proeugene/logfalcon/actions/workflows/ci.yml/badge.svg)](https://github.com/proeugene/logfalcon/actions/workflows/ci.yml)
+[![CI](https://github.com/proeugene/betaflight-logfalcon/actions/workflows/ci.yml/badge.svg)](https://github.com/proeugene/betaflight-logfalcon/actions/workflows/ci.yml)
 
 **LogFalcon** is a Betaflight companion tool — a pre-configured **Raspberry Pi Zero W** appliance that empties your FC's blackbox flash in about 30–40 seconds, in the field, automatically.
 
@@ -86,7 +86,7 @@ LogFalcon is a **Betaflight add-on / companion tool** — it is not affiliated w
 
 
 
-1. **Download** the latest `logfalcon-*.img.xz` from [Releases](https://github.com/proeugene/logfalcon/releases)
+1. **Download** the latest `logfalcon-*.img.xz` from [Releases](https://github.com/proeugene/betaflight-logfalcon/releases)
 2. **Burn** it to a microSD card using [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [Balena Etcher](https://etcher.balena.io/)
 3. **(Optional, recommended) Customize** — before ejecting the SD card, open the `boot` partition and edit `logfalcon-config.txt`:
    ```ini
@@ -107,7 +107,7 @@ LogFalcon is a **Betaflight add-on / companion tool** — it is not affiliated w
 If you prefer to install on an existing Raspberry Pi OS setup (or want to contribute), flash **Raspberry Pi OS Lite (64-bit, bookworm)** to the SD card, SSH in, and run:
 
 ```bash
-git clone https://github.com/proeugene/logfalcon
+git clone https://github.com/proeugene/betaflight-logfalcon
 cd logfalcon
 sudo bash install.sh --ssid "LogFalcon" --password "your-password"
 ```
@@ -309,7 +309,7 @@ python -m logfalcon --port /dev/ttyACM0 --verbose
 
 ```bash
 # Clone and set up:
-git clone https://github.com/proeugene/logfalcon
+git clone https://github.com/proeugene/betaflight-logfalcon
 cd logfalcon
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"   # also builds the optional C extension

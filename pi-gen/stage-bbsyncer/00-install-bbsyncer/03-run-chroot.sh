@@ -24,9 +24,11 @@ apt-get purge -y \
     2>/dev/null || true
 apt-get autoremove -y --purge
 
-# ---- 3. Clean apt caches and lists ------------------------------------------
+# ---- 3. Clean apt package download cache ------------------------------------
+# NOTE: Do NOT remove /var/lib/apt/lists — the export-image stage that pi-gen
+# runs after all custom stages needs those lists to locate and install packages
+# (e.g. userconf-pi). The lists are tiny and compress well inside the final .xz.
 apt-get clean
-rm -rf /var/lib/apt/lists/*
 
 # ---- 4. Remove documentation ------------------------------------------------
 rm -rf \

@@ -1,4 +1,4 @@
-# systemd unit for bbsyncer boot-time config application
+# systemd unit for logfalcon boot-time config application
 # Reads /boot/firmware/logfalcon-config.txt and updates hostapd + app config.
 # Install to: /etc/systemd/system/logfalcon-firstboot.service
 # Enable: sudo systemctl enable logfalcon-firstboot.service

@@ -7,7 +7,7 @@ HOTSPOT_IP="192.168.4.1"
 if [ -f /etc/dhcpcd.conf ]; then
     cat >> /etc/dhcpcd.conf <<EOF
 
-# BBSyncer hotspot static IP
+# LogFalcon hotspot static IP
 interface wlan0
 static ip_address=${HOTSPOT_IP}/24
 nohook wpa_supplicant
@@ -50,7 +50,7 @@ EOF
 sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd 2>/dev/null || true
 
 # dnsmasq config
-cat > /etc/dnsmasq.d/bbsyncer.conf <<EOF
+cat > /etc/dnsmasq.d/logfalcon.conf <<EOF
 interface=wlan0
 bind-interfaces
 dhcp-range=192.168.4.2,192.168.4.20,24h
@@ -61,7 +61,7 @@ EOF
 grep -q "^no-resolv" /etc/dnsmasq.conf 2>/dev/null || echo "no-resolv" >> /etc/dnsmasq.conf
 
 # avahi mDNS hostname
-sed -i 's/^#*host-name=.*/host-name=blackboxdata/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
+sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
 
 # Unblock Wi-Fi at boot
 rfkill unblock wlan 2>/dev/null || true

@@ -1,6 +1,6 @@
 #!/bin/bash -e
 # Minimize image size.
-# Runs inside the image chroot after the bbsyncer package is fully installed.
+# Runs inside the image chroot after the logfalcon package is fully installed.
 # The C extension (_msp_fast.so) is already compiled at this point so build
 # tools are safe to remove.
 

@@ -81,7 +81,7 @@ if [[ -f "$LOGFALCON_CONF" ]]; then
   sed -i "s/^hotspot_password = .*/hotspot_password = \"$PASSWORD_ESCAPED\"/" "$LOGFALCON_CONF"
   log "Updated $LOGFALCON_CONF"
 else
-  log "WARNING: $LOGFALCON_CONF not found — skipped bbsyncer update."
+  log "WARNING: $LOGFALCON_CONF not found — skipped logfalcon config update."
 fi
 
 log "Boot config applied successfully."

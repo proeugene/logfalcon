@@ -1,12 +1,12 @@
 #!/bin/bash -e
-# Install bbsyncer into the image
+# Install logfalcon into the image
 
-INSTALL_DIR="/opt/bbsyncer"
-CONFIG_DIR="/etc/bbsyncer"
+INSTALL_DIR="/opt/logfalcon"
+CONFIG_DIR="/etc/logfalcon"
 LOG_DIR="/mnt/logfalcon-logs"
 REPO_DIR="/tmp/logfalcon-src"
 
-# Create bbsyncer system user
+# Create bbsyncer system user (legacy name kept for compatibility)
 if ! id bbsyncer &>/dev/null; then
     useradd --system --no-create-home --shell /sbin/nologin \
         --groups dialout bbsyncer 2>/dev/null || \

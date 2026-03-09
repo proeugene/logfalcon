@@ -7,7 +7,7 @@
 #
 # What this does:
 #   1. Install system packages (hostapd, dnsmasq, avahi, Python)
-#   2. Create bbsyncer system user
+#   2. Create bbsyncer system user (legacy name kept for compatibility)
 #   3. Install Python package into /opt/logfalcon/venv
 #   4. Set up Wi-Fi hotspot (hostapd + dnsmasq + static IP)
 #   5. Mount point for log storage (/mnt/logfalcon-logs)
@@ -18,9 +18,9 @@
 set -euo pipefail
 
 ### --- Defaults --- ###
-INSTALL_DIR="/opt/bbsyncer"
+INSTALL_DIR="/opt/logfalcon"
 LOG_DIR="/mnt/logfalcon-logs"
-CONFIG_DIR="/etc/bbsyncer"
+CONFIG_DIR="/etc/logfalcon"
 SSID="BF-Blackbox"
 WIFI_PASSWORD="fpvpilot"
 HOTSPOT_IP="192.168.4.1"
@@ -75,7 +75,7 @@ PY
 fi
 
 ### --- 2. System user --- ###
-echo "[2/8] Creating bbsyncer system user..."
+echo "[2/8] Creating bbsyncer system user (legacy name kept for compatibility)..."
 if ! id bbsyncer &>/dev/null; then
   useradd --system --no-create-home --shell /sbin/nologin \
     --groups dialout,gpio bbsyncer 2>/dev/null || \
@@ -144,8 +144,8 @@ EOF
 sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
 
 # dnsmasq config (DHCP + DNS redirect for captive portal)
-cat > /etc/dnsmasq.d/bbsyncer.conf <<EOF
-# bbsyncer: DHCP + captive portal DNS
+cat > /etc/dnsmasq.d/logfalcon.conf <<EOF
+# logfalcon: DHCP + captive portal DNS
 interface=wlan0
 bind-interfaces
 dhcp-range=$HOTSPOT_DHCP_START,$HOTSPOT_DHCP_END,24h
@@ -158,7 +158,7 @@ EOF
 grep -q "^no-resolv" /etc/dnsmasq.conf 2>/dev/null || echo "no-resolv" >> /etc/dnsmasq.conf
 
 # avahi mDNS hostname
-sed -i 's/^#*host-name=.*/host-name=blackboxdata/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
+sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
 
 # Bring up wlan0 with static IP now
 ip addr add "$HOTSPOT_IP/24" dev wlan0 2>/dev/null || true
@@ -208,7 +208,7 @@ echo ""
 echo "=== Install complete! ==="
 echo ""
 echo "Wi-Fi hotspot: $SSID (password: $WIFI_PASSWORD)"
-echo "Web interface: http://$HOTSPOT_IP  or  http://blackboxdata.local"
+echo "Web interface: http://$HOTSPOT_IP  or  http://logfalcon.local"
 echo ""
 if [[ $GENERATED_PASSWORD -eq 1 ]]; then
   echo "A unique hotspot password was generated for this install."

@@ -136,7 +136,7 @@ class TestSyncOrchestratorSuccess:
             result = orch.run('/dev/ttyACM0')
 
         assert result == SyncResult.ALREADY_EMPTY
-        led.set_state.assert_called_with(LEDState.ALREADY_EMPTY)
+        led.set_state.assert_called_with(LEDState.DONE)
 
     def test_not_betaflight(self, tmpdir):
         """Non-BTFL FC should return ERROR."""

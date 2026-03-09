@@ -3,6 +3,11 @@
 Runs in a background thread. The main thread sets the desired state via
 `set_state()`; the LED thread executes the corresponding blink pattern.
 
+Field-optimised: three visible patterns that are unmistakable at a glance.
+  BUSY  — fast steady blink (don't unplug)
+  DONE  — rapid burst then long solid (safe to unplug)
+  ERROR — SOS repeating (something went wrong)
+
 Backends:
   sysfs  — /sys/class/leds/led0/ (Pi built-in ACT LED, no extra hardware)
   gpio   — RPi.GPIO pin (optional external LED)
@@ -27,32 +32,26 @@ _SYSFS_TRIGGER = _SYSFS_LED / 'trigger'
 
 class LEDState(Enum):
     OFF = auto()
-    SYNCING = auto()  # 100ms on / 100ms off (5 Hz)
-    VERIFYING = auto()  # 250ms on / 250ms off (2 Hz)
-    ERASING = auto()  # 800ms on / 200ms off
-    SUCCESS = auto()  # 3× rapid blink, 2s solid, off
-    ALREADY_EMPTY = auto()  # 2× slow blink, off
-    ERROR_GENERAL = auto()  # SOS repeating
-    ERROR_DISCONNECTED = auto()  # triple rapid flash, repeating
+    BOOTING = auto()   # slow heartbeat (1 s on / 1 s off) — Pi is starting up
+    BUSY = auto()      # fast blink (150 ms on / 150 ms off) — sync in progress
+    DONE = auto()      # 5× rapid flash then 3 s solid then off — safe to unplug
+    ERROR = auto()     # SOS repeating — something went wrong
 
 
-# Pattern: list of (on_ms, off_ms) pairs; None means run once (non-repeating)
 _PATTERNS: dict[LEDState, tuple[list[tuple[int, int]], bool]] = {
     LEDState.OFF: ([], False),
-    LEDState.SYNCING: ([(100, 100)], True),
-    LEDState.VERIFYING: ([(250, 250)], True),
-    LEDState.ERASING: ([(800, 200)], True),
-    LEDState.SUCCESS: (
-        [(50, 50), (50, 50), (50, 50), (2000, 1)],  # 3× rapid + 2s solid
+    LEDState.BOOTING: ([(1000, 1000)], True),
+    LEDState.BUSY: ([(150, 150)], True),
+    LEDState.DONE: (
+        # 5× rapid flash (attention getter) then 3 s solid then off
+        [(50, 50), (50, 50), (50, 50), (50, 50), (50, 50), (3000, 1)],
         False,
     ),
-    LEDState.ALREADY_EMPTY: ([(500, 500), (500, 500)], False),
-    LEDState.ERROR_GENERAL: (
+    LEDState.ERROR: (
         # SOS: 3×short, 3×long, 3×short, pause
         [(150, 150)] * 3 + [(400, 150)] * 3 + [(150, 150)] * 3 + [(700, 700)],
         True,
     ),
-    LEDState.ERROR_DISCONNECTED: ([(50, 50), (50, 50), (50, 50)], True),
 }
 
 

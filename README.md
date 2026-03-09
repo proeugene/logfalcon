@@ -45,7 +45,7 @@ Your FC's flash is **never erased** until the copy is verified with SHA-256. Eve
  │   ② Plug FC into Pi Zero W (USB OTG cable)           │
  │                    ↓                                  │
  │   ③ Watch the LED — about 30 seconds                 │
- │      fast blink → slow pulse → solid = DONE ✓        │
+ │      steady blink = working → long solid = DONE ✓   │
  │                    ↓                                  │
  │   ④ Unplug. Fly again. Repeat as needed.             │
  │                                                      │
@@ -104,16 +104,14 @@ No extra hardware needed — LogFalcon uses the Pi's built-in ACT LED.
 
 ## 💡 LED Guide
 
-Watch the Pi's green LED — it tells you exactly what's happening:
+Only three patterns — unmistakable at a glance, even in direct sunlight:
 
-| LED | Meaning |
-|-----|---------|
-| ⚡ Fast blink (100ms) | Copying flash to SD card |
-| 🔄 Medium blink (250ms) | Verifying SHA-256 |
-| 🌊 Slow pulse (800ms on / 200ms off) | Erasing FC flash |
-| ✅ 3× rapid blink → 2s solid → off | **Done — safe to unplug** |
-| ⭕ 2× slow blink → off | Flash was already empty |
-| 🆘 SOS pattern (repeating) | Error — check logs |
+| LED | Meaning | What to do |
+|-----|---------|------------|
+| 💛 Slow pulse (1 s on / 1 s off) | Pi is booting up | Wait ~60–90 s |
+| ⚡ Steady blink (fast) | Sync in progress — copying, verifying, or erasing | **Don't unplug** |
+| ✅ Rapid burst → 3 s solid → off | **Done — safe to unplug** | Unplug and fly! |
+| 🆘 SOS pattern (repeating) | Error — something went wrong | Check the web UI for details |
 
 ---
 

@@ -71,7 +71,7 @@ Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [Balena Etch
 Before ejecting the SD card, open the `boot` partition and edit **`logfalcon-config.txt`**:
 
 ```ini
-SSID=LogFalcon
+SSID=BF-Blackbox
 PASSWORD=your-password
 ```
 
@@ -163,7 +163,7 @@ The config file lives at `/etc/logfalcon/logfalcon.toml`. Defaults work out of t
 
 ```toml
 erase_after_sync = true               # Set false to copy without erasing
-hotspot_ssid = "LogFalcon"             # Wi-Fi network name
+hotspot_ssid = "BF-Blackbox"
 hotspot_password = "fpvpilot"          # Change this!
 storage_path = "/mnt/logfalcon-logs"   # Where logs are stored
 min_free_space_mb = 200                # Always keep this much free

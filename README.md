@@ -1,6 +1,6 @@
 # LogFalcon
 
-[![CI](https://github.com/proeugene/betaflight-logfalcon/actions/workflows/ci.yml/badge.svg)](https://github.com/proeugene/betaflight-logfalcon/actions/workflows/ci.yml)
+[![CI](https://github.com/proeugene/logfalcon/actions/workflows/ci.yml/badge.svg)](https://github.com/proeugene/logfalcon/actions/workflows/ci.yml)
 
 **Clear your FC's blackbox flash in the field. No laptop. No dongles. Keep flying.**
 
@@ -60,7 +60,7 @@ Later, from any phone: connect to **`LogFalcon`** Wi-Fi → logs open in your br
 
 ### Step 1 — Download the image
 
-Grab the latest **`logfalcon-*.img.xz`** from [**Releases**](https://github.com/proeugene/betaflight-logfalcon/releases).
+Grab the latest **`logfalcon-*.img.xz`** from [**Releases**](https://github.com/proeugene/logfalcon/releases).
 
 ### Step 2 — Burn to microSD
 
@@ -248,8 +248,8 @@ Your FC logs to an SD card, not internal flash. MSP can't read FC-side SD cards.
 For contributors or manual Pi OS installs:
 
 ```bash
-git clone https://github.com/proeugene/betaflight-logfalcon
-cd betaflight-logfalcon
+git clone https://github.com/proeugene/logfalcon
+cd logfalcon
 sudo bash install.sh --ssid "LogFalcon" --password "your-password"
 ```
 
@@ -258,8 +258,8 @@ This installs to `/opt/logfalcon/`, sets up hostapd, dnsmasq, captive portal, mD
 ### Development Setup
 
 ```bash
-git clone https://github.com/proeugene/betaflight-logfalcon
-cd betaflight-logfalcon
+git clone https://github.com/proeugene/logfalcon
+cd logfalcon
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 ```

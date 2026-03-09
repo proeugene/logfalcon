@@ -77,7 +77,7 @@ def detect_fc(client: MSPClient) -> FCInfo:
     blackbox_device = BLACKBOX_DEVICE_NONE
     try:
         bb_cfg = client.get_blackbox_config()
-        blackbox_device = bb_cfg['device']
+        blackbox_device = bb_cfg.get('device', BLACKBOX_DEVICE_NONE)
         log.info('Blackbox device type: %d', blackbox_device)
     except MSPError as exc:
         log.warning('Could not read BLACKBOX_CONFIG: %s', exc)

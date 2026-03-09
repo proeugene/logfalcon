@@ -112,7 +112,8 @@ def list_sessions(storage_root: Path) -> list[dict]:
                 continue
             try:
                 manifest = json.loads(manifest_path.read_text())
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                log.warning('Skipping corrupted manifest %s: %s', manifest_path, exc)
                 continue
             sessions.append(
                 {

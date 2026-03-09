@@ -105,11 +105,15 @@ class MSPClient:
                 return frame
         raise MSPTimeoutError(f'Timeout waiting for MSP response code={code}')
 
+    def _flush_frames(self, code: int) -> None:
+        """Remove any buffered frames and pending flag for the given MSP code."""
+        self._decoder.frames = [f for f in self._decoder.frames if f.code != code]
+        self._pending.pop(code, None)
+
     def request(self, code: int, payload: bytes = b'') -> MSPFrame:
         """Send request and wait for matching response."""
         # Flush any stale frames for this code
-        self._decoder.frames = [f for f in self._decoder.frames if f.code != code]
-        self._pending.pop(code, None)
+        self._flush_frames(code)
         self.send(code, payload)
         return self.receive(code)
 
@@ -166,8 +170,7 @@ class MSPClient:
         """Send a DATAFLASH_READ request without waiting for response."""
         payload = struct.pack('<IHB', address, size, 1 if compression else 0)
         # Flush stale frames for this code
-        self._decoder.frames = [f for f in self._decoder.frames if f.code != MSP_DATAFLASH_READ]
-        self._pending.pop(MSP_DATAFLASH_READ, None)
+        self._flush_frames(MSP_DATAFLASH_READ)
         self.send(MSP_DATAFLASH_READ, payload)
 
     def _parse_flash_read_payload(self, payload: bytes) -> tuple[int, bytes]:

@@ -38,10 +38,17 @@ from logfalcon.config import load_config
 from logfalcon.storage.manifest import list_sessions
 from logfalcon.sync.orchestrator import get_status
 from logfalcon.util.disk_space import free_mb, used_and_free_gb
+from logfalcon.web._templates import (
+    render_error,
+    render_index,
+    render_sessions,
+    render_settings,
+)
 
 log = logging.getLogger(__name__)
 
 _sessions_cache: tuple[float, list] = (0.0, [])
+_sessions_cache_lock = threading.Lock()
 _SESSIONS_TTL = 10.0  # seconds
 _SERVER_STARTED_AT = _time.monotonic()
 _CSRF_TOKEN = secrets.token_urlsafe(24)
@@ -51,11 +58,12 @@ _ALLOWED_DOWNLOADS = frozenset({'raw_flash.bbl', 'manifest.json'})
 
 def _get_sessions(storage: Path) -> list:
     global _sessions_cache
-    ts, data = _sessions_cache
-    if _time.monotonic() - ts > _SESSIONS_TTL:
-        data = list_sessions(storage) if storage.exists() else []
-        _sessions_cache = (_time.monotonic(), data)
-    return data
+    with _sessions_cache_lock:
+        ts, data = _sessions_cache
+        if _time.monotonic() - ts > _SESSIONS_TTL:
+            data = list_sessions(storage) if storage.exists() else []
+            _sessions_cache = (_time.monotonic(), data)
+        return data
 
 
 _CAPTIVE_PATHS = frozenset(
@@ -209,82 +217,6 @@ def _e(s: object) -> str:
     return html.escape(str(s))
 
 
-def _render_sessions(sessions: list) -> str:
-    if not sessions:
-        return (
-            '<div class="empty-state">'
-            '<div class="icon">📭</div>'
-            '<p>No sessions yet.</p>'
-            '<ol>'
-            '<li>Power on the Pi and give the hotspot up to 90 seconds to appear.</li>'
-            '<li>Join the Wi-Fi network, then plug the FC into the Pi&apos;s inner OTG port.</li>'
-            '<li>Make sure the FC is logging to SPI flash, not an FC-side SD card.</li>'
-            '<li>Wait for the LED success pattern, then refresh this page.</li>'
-            '</ol>'
-            '</div>'
-        )
-    parts: list[str] = []
-    current_fc: str | None = None
-    for i, session in enumerate(sessions):
-        fc_dir = session['fc_dir']
-        if fc_dir != current_fc:
-            if current_fc is not None:
-                parts.append('</div></details>')
-            current_fc = fc_dir
-            parts.append(f'<details class="fc-group" open>\n<summary>{_e(fc_dir)}</summary>\n<div>')
-
-        m = session.get('manifest') or {}
-        fc = m.get('fc') or {}
-        file_info = m.get('file') or {}
-        fc_ver = fc.get('api_version', '?')
-        file_size = file_info.get('bytes', 0)
-        file_mb = round(file_size / 1048576, 1)
-        erased = m.get('erase_completed', False)
-        sha256 = file_info.get('sha256', '')
-        session_id = session['session_id']
-        bbl_path = session.get('bbl_path')
-
-        erased_cls = 'erased' if erased else 'no-erase'
-        erased_txt = 'Erased' if erased else 'Not erased'
-        erased_title = (
-            'Flash copy verified and FC erase completed.'
-            if erased
-            else 'The log was copied safely, but the FC flash still needs attention.'
-        )
-        sha_html = (
-            f'<span title="{_e(sha256)}">SHA-256: {_e(sha256[:12])}…</span>' if sha256 else ''
-        )
-        bbl_html = (
-            f'<a class="btn btn-download" href="/download/{_e(session_id)}/raw_flash.bbl">'
-            f'Download .bbl</a>'
-            if bbl_path
-            else ''
-        )
-        parts.append(
-            f'<div class="session-card">'
-            f'<div class="session-header">'
-            f'<span class="session-title">{_e(session["session_dir"].replace("_", " "))}</span>'
-            f'<span class="badge {erased_cls}" title="{_e(erased_title)}">{erased_txt}</span>'
-            f'</div>'
-            f'<div class="session-meta">'
-            f'<span>{file_mb} MB</span>'
-            f'<span>API {_e(fc_ver)}</span>'
-            f'{sha_html}'
-            f'</div>'
-            f'<div class="session-actions">'
-            f'{bbl_html}'
-            f'<a class="btn btn-manifest" href="/download/{_e(session_id)}/manifest.json">Manifest</a>'
-            f'<button class="btn-delete" onclick="deleteSession(\'{_e(session_id)}\', this)">'
-            f'Delete from Pi</button>'
-            f'</div></div>'
-        )
-
-        if i == len(sessions) - 1:
-            parts.append('</div></details>')
-
-    return '\n'.join(parts)
-
-
 def _render_index(storage: Path) -> str:
     sessions = _get_sessions(storage)
     status = get_status()
@@ -297,7 +229,7 @@ def _render_index(storage: Path) -> str:
         free_storage_mb = 0.0
     total_gb = used_gb + free_gb
     pct = int(used_gb / total_gb * 100) if total_gb > 0 else 0
-    sessions_html = _render_sessions(sessions)
+    sessions_html = render_sessions(sessions)
     status_message = _e(status.get('message', 'Ready for the next sync.'))
     storage_warning_html = ''
     if free_storage_mb < cfg.min_free_space_mb:
@@ -308,340 +240,15 @@ def _render_index(storage: Path) -> str:
             f'to stay above the {_e(cfg.min_free_space_mb)} MB reserve.'
             '</div>'
         )
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LogFalcon</title>
-  <style>
-    *, *::before, *::after {{ box-sizing: border-box; }}
-    body {{
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; padding: 0;
-      background: #0f0f12;
-      color: #e0e0e8;
-      min-height: 100vh;
-    }}
-    header {{
-      background: #1a1a24;
-      border-bottom: 1px solid #2e2e40;
-      padding: 14px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky; top: 0; z-index: 100;
-    }}
-    header h1 {{ margin: 0; font-size: 1.1rem; font-weight: 600; }}
-    #status-badge {{
-      font-size: 0.75rem;
-      padding: 4px 10px;
-      border-radius: 12px;
-      background: #2e2e40;
-      color: #a0a0b8;
-    }}
-    #status-badge.syncing  {{ background: #1a3a5c; color: #60b0ff; }}
-    #status-badge.erasing  {{ background: #3a2a10; color: #ffaa40; }}
-    #status-badge.verifying {{ background: #2a1a4a; color: #c060ff; }}
-    #status-badge.error    {{ background: #3a1a1a; color: #ff6060; }}
-    main {{ max-width: 700px; margin: 0 auto; padding: 16px; }}
-    .disk-info {{
-      background: #1a1a24;
-      border: 1px solid #2e2e40;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      font-size: 0.85rem;
-      color: #a0a0b8;
-    }}
-    .disk-bar-track {{
-      background: #2e2e40;
-      border-radius: 4px;
-      height: 6px;
-      margin-top: 6px;
-      overflow: hidden;
-    }}
-    .disk-bar-fill {{
-      background: #4060d0;
-      height: 100%;
-      border-radius: 4px;
-      transition: width 0.3s;
-    }}
-    .help-card {{
-      background: #141c2c;
-      border: 1px solid #294263;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      color: #b7d0f5;
-      font-size: 0.85rem;
-    }}
-    .help-card strong {{ color: #ffffff; }}
-    .help-card ol {{ margin: 10px 0 0 18px; padding: 0; }}
-    .help-card li {{ margin-bottom: 6px; }}
-    .warning-card {{
-      background: #3a2a10;
-      border: 1px solid #704d15;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      color: #ffca80;
-      font-size: 0.85rem;
-    }}
-    #status-detail {{
-      margin-top: 6px;
-      color: #8f90a8;
-      font-size: 0.8rem;
-    }}
-    .fc-group {{ margin-bottom: 20px; }}
-    .fc-group summary {{
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-      color: #c0c0d8;
-      padding: 8px 0;
-      list-style: none;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border-bottom: 1px solid #2e2e40;
-      user-select: none;
-    }}
-    .fc-group summary::before {{ content: "▶"; font-size: 0.7rem; transition: transform 0.2s; }}
-    .fc-group[open] summary::before {{ transform: rotate(90deg); }}
-    .session-card {{
-      background: #1a1a24;
-      border: 1px solid #2e2e40;
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }}
-    .session-header {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap;
-    }}
-    .session-title {{ font-size: 0.9rem; font-weight: 500; }}
-    .session-meta {{ font-size: 0.75rem; color: #808098; display: flex; gap: 10px; flex-wrap: wrap; }}
-    .badge {{
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 8px;
-      font-size: 0.7rem;
-      background: #2e2e40;
-      color: #909098;
-    }}
-    .badge.erased {{ background: #1a3a1a; color: #60d060; }}
-    .badge.no-erase {{ background: #3a2a10; color: #c08030; }}
-    .session-actions {{ display: flex; gap: 8px; flex-wrap: wrap; }}
-    button, a.btn {{
-      display: inline-block;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      border: none;
-      text-decoration: none;
-      font-weight: 500;
-      transition: opacity 0.15s;
-    }}
-    button:hover, a.btn:hover {{ opacity: 0.8; }}
-    .btn-download {{ background: #2a4a80; color: #a0c8ff; }}
-    .btn-manifest {{ background: #2e2e40; color: #a0a0b8; }}
-    .btn-delete   {{ background: #4a1a1a; color: #ff8080; }}
-    .empty-state {{
-      text-align: center;
-      padding: 48px 24px;
-      color: #505068;
-    }}
-    .empty-state .icon {{ font-size: 3rem; margin-bottom: 12px; }}
-    .empty-state ol {{
-      display: inline-block;
-      margin: 12px auto 0;
-      padding-left: 18px;
-      text-align: left;
-      color: #7f8098;
-    }}
-    .progress-bar-track {{
-      background: #2e2e40;
-      border-radius: 3px;
-      height: 4px;
-      overflow: hidden;
-      display: none;
-    }}
-    .progress-bar-fill {{
-      background: #60b0ff;
-      height: 100%;
-      width: 0%;
-      border-radius: 3px;
-      transition: width 0.5s;
-    }}
-  </style>
-</head>
-<body>
-
-<header>
-  <h1>LogFalcon</h1>
-  <a href="/settings" style="color:#a0a0b8; text-decoration:none; font-size:1.2rem;" title="Settings">&#9881;</a>
-  <span id="status-badge">Idle</span>
-</header>
-
-<div id="sync-progress-container" style="background:#1a2a3a; padding:0 20px; display:none;">
-  <div style="max-width:700px; margin:0 auto; padding:8px 0; font-size:0.8rem; color:#60b0ff;">
-    <span id="sync-progress-label">Syncing...</span>
-    <div class="progress-bar-track" id="progress-track" style="display:block; margin-top:4px;">
-      <div class="progress-bar-fill" id="progress-fill"></div>
-    </div>
-  </div>
-</div>
-
-<main>
-  <div class="disk-info">
-    <span>Pi SD card: <strong>{used_gb:.1f} GB used</strong> / {free_gb:.1f} GB free</span>
-    <div class="disk-bar-track">
-      <div class="disk-bar-fill" style="width: {pct}%"></div>
-    </div>
-    <div id="status-detail">{status_message}</div>
-  </div>
-
-  <div class="help-card">
-    <strong>Field quick start</strong>
-    <ol>
-      <li>Power on the Pi and wait up to 90 seconds for Wi-Fi to appear.</li>
-      <li>Join the hotspot, then plug the FC into the Pi's inner OTG USB port.</li>
-      <li>Wait for the LED success pattern before unplugging the FC.</li>
-      <li>Download the <code>.bbl</code> later from this page and open it in Blackbox Explorer.</li>
-    </ol>
-  </div>
-
-  {storage_warning_html}
-
-  {sessions_html}
-</main>
-
-<script>
-  // Poll sync status every 3 seconds
-  function updateStatus() {{
-    fetch('/status')
-      .then(r => r.json())
-      .then(data => {{
-        const badge = document.getElementById('status-badge');
-        const detail = document.getElementById('status-detail');
-        const state = data.state || 'idle';
-        const progress = data.progress || 0;
-        const labels = {{
-          idle: 'Idle', identifying: 'Identifying FC\u2026',
-          querying: 'Querying flash\u2026', syncing: 'Syncing\u2026',
-          verifying: 'Verifying\u2026', erasing: 'Erasing\u2026', error: 'Error'
-        }};
-        detail.textContent = data.message || 'Ready for the next sync.';
-        badge.textContent = (labels[state] || state) +
-          (state === 'syncing' && progress > 0 ? ` ${{progress}}%` : '');
-        badge.className = '';
-        if (['syncing','identifying','querying'].includes(state)) badge.classList.add('syncing');
-        else if (state === 'erasing') badge.classList.add('erasing');
-        else if (state === 'verifying') badge.classList.add('verifying');
-        else if (state === 'error') badge.classList.add('error');
-
-        const progressContainer = document.getElementById('sync-progress-container');
-        const progressFill = document.getElementById('progress-fill');
-        const progressLabel = document.getElementById('sync-progress-label');
-        if (state === 'syncing') {{
-          progressContainer.style.display = 'block';
-          progressFill.style.width = progress + '%';
-          progressLabel.textContent = `Syncing flash... ${{progress}}%`;
-        }} else {{
-          progressContainer.style.display = 'none';
-        }}
-      }})
-      .catch(() => {{}});
-  }}
-  updateStatus();
-  setInterval(updateStatus, 3000);
-
-  // Delete session
-  function deleteSession(sessionId, btn) {{
-    if (!confirm('Delete this session from the Pi?\\n\\nMake sure you have downloaded the .bbl file first.')) return;
-    btn.disabled = true;
-    btn.textContent = 'Deleting\u2026';
-    fetch('/sessions/' + sessionId, {{
-      method: 'DELETE',
-      headers: {{ 'X-CSRF-Token': '{_e(_CSRF_TOKEN)}' }}
-    }})
-      .then(r => r.json())
-      .then(data => {{
-        if (data.deleted) {{
-          const card = btn.closest('.session-card');
-          card.style.transition = 'opacity 0.3s';
-          card.style.opacity = '0';
-          setTimeout(() => {{ card.remove(); location.reload(); }}, 300);
-        }} else {{
-          btn.disabled = false;
-          btn.textContent = 'Delete from Pi';
-          alert('Delete failed.');
-        }}
-      }})
-      .catch(() => {{
-        btn.disabled = false;
-        btn.textContent = 'Delete from Pi';
-        alert('Delete request failed.');
-      }});
-  }}
-</script>
-</body>
-</html>"""
-
-
-_SETTINGS_CSS = """\
-    *, *::before, *::after { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; padding: 0;
-      background: #0f0f12;
-      color: #e0e0e8;
-      min-height: 100vh;
-    }
-    header {
-      background: #1a1a24;
-      border-bottom: 1px solid #2e2e40;
-      padding: 14px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky; top: 0; z-index: 100;
-    }
-    header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
-    main { max-width: 700px; margin: 0 auto; padding: 16px; }
-    .form-group { margin-bottom: 16px; }
-    label { display: block; font-size: 0.85rem; color: #a0a0b8; margin-bottom: 4px; }
-    input[type="text"], input[type="password"] {
-      width: 100%; padding: 8px 12px;
-      background: #1a1a24; border: 1px solid #2e2e40;
-      border-radius: 6px; color: #e0e0e8; font-size: 0.9rem;
-    }
-    .btn-save {
-      display: inline-block; padding: 8px 20px;
-      background: #2a4a80; color: #a0c8ff;
-      border: none; border-radius: 6px;
-      font-size: 0.9rem; cursor: pointer; font-weight: 500;
-    }
-    .btn-save:hover { opacity: 0.8; }
-    .back-link { color: #a0a0b8; text-decoration: none; font-size: 0.85rem; }
-    .back-link:hover { color: #e0e0e8; }
-    .msg-error { background: #3a1a1a; color: #ff6060; padding: 10px 14px;
-      border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; }
-    .msg-success { background: #1a3a1a; color: #60d060; padding: 10px 14px;
-      border-radius: 6px; margin-bottom: 16px; font-size: 0.85rem; }
-    .current-info { background: #1a1a24; border: 1px solid #2e2e40;
-      border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;
-      font-size: 0.85rem; color: #a0a0b8; }
-"""
-
+    return render_index(
+        used_gb=used_gb,
+        free_gb=free_gb,
+        pct=pct,
+        sessions_html=sessions_html,
+        status_message=status_message,
+        storage_warning_html=storage_warning_html,
+        csrf_token=_e(_CSRF_TOKEN),
+    )
 
 def _render_settings(message: str = '', error: bool = False) -> str:
     hostapd = _read_hostapd_config()
@@ -660,45 +267,13 @@ def _render_settings(message: str = '', error: bool = False) -> str:
             'Change it before flying at a shared field.'
             '</div>'
         )
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Settings — LogFalcon</title>
-  <style>{_SETTINGS_CSS}</style>
-</head>
-<body>
-<header>
-  <h1>Settings</h1>
-</header>
-<main>
-  <a class="back-link" href="/">&larr; Back</a>
-  {msg_html}
-  {warning_html}
-  <div class="current-info">
-    <strong>Current SSID:</strong> {current_ssid}<br>
-    <strong>Current Password:</strong> {current_pass}
-  </div>
-  <form method="POST" action="/settings">
-    <input type="hidden" name="csrf_token" value="{_e(_CSRF_TOKEN)}">
-    <div class="form-group">
-      <label for="ssid">New SSID (1–32 characters)</label>
-      <input type="text" id="ssid" name="ssid" required minlength="1" maxlength="32">
-    </div>
-    <div class="form-group">
-      <label for="password">New Password (8–63 characters)</label>
-      <input type="password" id="password" name="password" required minlength="8" maxlength="63">
-    </div>
-    <p style="font-size:0.8rem; color:#a0a0b8;">
-      Use printable characters only. Avoid copy/pasting hidden line breaks from password managers.
-    </p>
-    <button type="submit" class="btn-save">Save</button>
-  </form>
-</main>
-</body>
-</html>"""
-
+    return render_settings(
+        current_ssid=current_ssid,
+        current_pass=current_pass,
+        msg_html=msg_html,
+        warning_html=warning_html,
+        csrf_token=_e(_CSRF_TOKEN),
+    )
 
 def _resolve_session_path(storage: Path, session_id: str) -> Path:
     """Safely resolve a session_id like 'fc_BTFL_uid-abc/2026-02-26_143012'."""
@@ -740,7 +315,9 @@ def _make_handler(storage_path: str) -> type:
                 elif path == '/sessions':
                     self._send_json(_get_sessions(storage))
                 elif path == '/status':
-                    self._send_json(get_status())
+                    payload = get_status()
+                    payload.update(_idle_shutdown_info())
+                    self._send_json(payload)
                 elif path == '/events':
                     self._handle_sse()
                 elif path == '/health':
@@ -753,8 +330,8 @@ def _make_handler(storage_path: str) -> type:
                     self._send_error_response(404)
             except _HTTPError as exc:
                 self._send_error_response(exc.code)
-            except Exception:
-                log.exception('Unhandled error in GET %s', path)
+            except (OSError, ValueError, KeyError) as exc:
+                log.exception('Unhandled error in %s %s', 'GET', path)
                 self._send_error_response(500)
 
         def do_DELETE(self) -> None:
@@ -767,8 +344,8 @@ def _make_handler(storage_path: str) -> type:
                     self._send_error_response(404)
             except _HTTPError as exc:
                 self._send_error_response(exc.code)
-            except Exception:
-                log.exception('Unhandled error in DELETE %s', path)
+            except (OSError, ValueError, KeyError) as exc:
+                log.exception('Unhandled error in %s %s', 'DELETE', path)
                 self._send_error_response(500)
 
         def do_POST(self) -> None:
@@ -780,8 +357,8 @@ def _make_handler(storage_path: str) -> type:
                     self._send_error_response(404)
             except _HTTPError as exc:
                 self._send_error_response(exc.code)
-            except Exception:
-                log.exception('Unhandled error in POST %s', path)
+            except (OSError, ValueError, KeyError) as exc:
+                log.exception('Unhandled error in %s %s', 'POST', path)
                 self._send_error_response(500)
 
         def _handle_settings_post(self) -> None:
@@ -898,7 +475,8 @@ def _make_handler(storage_path: str) -> type:
                 raise _HTTPError(404)
             shutil.rmtree(session_path)
             global _sessions_cache
-            _sessions_cache = (0.0, [])  # invalidate
+            with _sessions_cache_lock:
+                _sessions_cache = (0.0, [])  # invalidate
             log.info('Deleted session from %s: %s', self.client_address[0], session_path)
             self._send_json({'deleted': True, 'session_id': session_id})
 
@@ -1007,11 +585,13 @@ def _make_handler(storage_path: str) -> type:
             with open(path, 'rb') as f:
                 self._stream_file_range(f, self.wfile, 0, size)
 
-        def _send_error_response(self, code: int) -> None:
+        def _send_error_response(self, code: int, message: str = '') -> None:
             self.send_response(code)
-            self.send_header('Content-Type', 'text/plain')
+            self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.end_headers()
-            self.wfile.write(f'{code} Error\n'.encode())
+            reason = message or self.responses.get(code, ('Error',))[0]
+            body = render_error(code, reason)
+            self.wfile.write(body.encode())
 
         def log_message(self, format: str, *args: object) -> None:
             log.debug('%s %s', self.address_string(), format % args)
@@ -1021,6 +601,19 @@ def _make_handler(storage_path: str) -> type:
 
 # Timestamp of the last sync activity (updated by the orchestrator via get_status)
 _last_sync_activity = _time.monotonic()
+_idle_shutdown_minutes: int = 0  # set by run_server when configured
+
+
+def _idle_shutdown_info() -> dict:
+    """Return idle-shutdown fields for the /status payload."""
+    if _idle_shutdown_minutes <= 0:
+        return {'idle_shutdown_minutes': 0, 'idle_shutdown_remaining_sec': 0}
+    elapsed = _time.monotonic() - _last_sync_activity
+    remaining = max(0, _idle_shutdown_minutes * 60 - elapsed)
+    return {
+        'idle_shutdown_minutes': _idle_shutdown_minutes,
+        'idle_shutdown_remaining_sec': int(remaining),
+    }
 
 
 def _start_idle_shutdown_timer(idle_minutes: int) -> None:
@@ -1060,6 +653,8 @@ def run_server(storage_path: str = '/mnt/logfalcon-logs', port: int = 80) -> Non
     log.info('Starting web server on 0.0.0.0:%d', port)
 
     cfg = load_config()
+    global _idle_shutdown_minutes  # noqa: PLW0603
+    _idle_shutdown_minutes = cfg.idle_shutdown_minutes
     if cfg.idle_shutdown_minutes > 0:
         _start_idle_shutdown_timer(cfg.idle_shutdown_minutes)
 

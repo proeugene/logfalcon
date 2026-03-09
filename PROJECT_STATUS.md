@@ -2,29 +2,27 @@
 
 ## What this project is
 
-Betaflight Blackbox Field Syncer is a field-ready Raspberry Pi Zero W / Zero 2 W appliance for FPV pilots who use Betaflight blackbox logging on **internal SPI flash**.
+FPV pilots who use Betaflight blackbox logging on internal SPI flash hit a recurring wall: the flash is small, fills up fast, and when it's full, logging stops mid-session. Before this project, the only ways to clear it were a laptop with Betaflight Configurator, or an expensive third-party USB dongle — both require extra hardware and often mean leaving the field.
 
-Its job is simple:
+Betaflight Blackbox Field Syncer is a pocket-sized Raspberry Pi Zero W / Zero 2 W appliance that removes that friction entirely. Plug the FC in, wait for the LED (~30–40 s), unplug, fly again. Repeat as many times as needed. All synced logs are timestamped, organised by FC, and available over the Pi's Wi-Fi hotspot from any phone when you're done flying.
 
-1. detect a plugged-in Betaflight flight controller over USB
-2. read the blackbox flash over MSP
-3. save the raw log to the Pi SD card
-4. verify the copy with SHA-256
-5. erase the FC flash only after verification passes
-6. make the saved logs available over Wi-Fi from a phone or laptop
+Internally it:
 
-This lets a pilot free up blackbox storage at the field without carrying a laptop.
+1. detects a plugged-in Betaflight FC over USB
+2. reads the blackbox flash over MSP
+3. saves the raw log to the Pi SD card
+4. verifies the copy with SHA-256
+5. erases the FC flash only after verification passes
+6. signals done via LED, makes logs available over Wi-Fi
 
 ## What problem it solves
 
-Pilots often fill their FC blackbox flash during a flying session. Clearing it normally means:
+FC onboard SPI flash is small — typically 2–4 MB. A few packs and it's full; Betaflight silently stops logging. Before this project, clearing it meant:
 
-- connecting to a laptop
-- opening Betaflight Configurator
-- waiting for the FC to connect
-- downloading or discarding logs manually
+- connecting to a **laptop**, opening Betaflight Configurator, downloading or discarding logs manually — or —
+- buying and carrying a **third-party USB dongle** that connects to a phone
 
-That workflow is slow and awkward at the field. This project turns the process into a dedicated plug-in sync box.
+Both options require leaving the field or spending money on extra hardware. This project turns a $15 Pi Zero W (already in most pilots' kit) into a dedicated sync box that works automatically at the field, with no laptop and no dongles.
 
 ## What it is capable of
 

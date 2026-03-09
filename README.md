@@ -2,21 +2,31 @@
 
 [![CI](https://github.com/proeugene/betaflight-blackbox-field-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/proeugene/betaflight-blackbox-field-sync/actions/workflows/ci.yml)
 
-A pocket-sized device based on a **Raspberry Pi Zero W** that automatically downloads and clears your Betaflight FC's blackbox flash while you're still standing at the field.
+A **Raspberry Pi Zero W** that lives in your field bag and empties your Betaflight FC's blackbox flash in about 30–40 seconds — automatically, with no laptop and no dongles.
 
-Plug your FC into the Pi, wait for the LED, plug the FC back into your quad, and fly again. Your logs stay on the Pi's SD card and are available over Wi-Fi from any phone or laptop.
+Plug your FC into the Pi, wait for the LED, plug the FC back into your quad, and fly again. Repeat as many times as you need throughout the session. All your logs are timestamped and waiting on the Pi's SD card, available over Wi-Fi from any phone when you're ready.
 
 ---
 
 ## The Problem
 
-FPV pilots who use internal SPI flash for blackbox logging run into a recurring frustration: the flash fills up mid-session. To clear it you normally need a laptop, Betaflight Configurator, and a USB cable. At the field, that's often not an option.
+Betaflight stores flight logs in the FC's onboard SPI flash — and that flash is small. A few hard packs and it's full. Mid-session, with no warning, logging just stops.
+
+Before this project, your options were:
+
+- **Laptop + Configurator** — find somewhere to sit, cable up, wait, erase or export manually
+- **Third-party USB dongles** — extra hardware to buy, carry, and keep charged
+- Or just **fly without logs** and deal with it later
+
+All three mean either leaving the field, carrying extra gear, or losing data.
 
 ## The Solution
 
-A Pi Zero W that lives in your field bag. It speaks Betaflight's MSP protocol over USB, streams the entire flash contents to its own SD card, verifies the copy with SHA-256, erases the FC flash, and blinks the LED when it's done. The whole thing is automatic — plug in, wait about 30-40 seconds for a typical 2 MB flash, done.
+A Pi Zero W in your field bag. Plug your FC in, wait for the LED — about 30–40 seconds — unplug, and fly again. That's the whole process.
 
-Logs stay on the Pi's SD card across flying sessions and FCs unless storage pressure forces the oldest stored sessions to be removed to protect reserve free space for a new safe sync. When you get home (or right at the field), connect to the Pi's Wi-Fi hotspot and download any `.bbl` file from a browser.
+The Pi speaks Betaflight's MSP protocol over USB, streams the entire flash to its SD card, verifies the copy with SHA-256, and only then erases the FC. Everything is automatic — no tapping, no menus, no configuration per-flight.
+
+You can repeat this as many times as needed throughout a session. Every sync creates a timestamped session folder on the Pi, organised by FC, so when you get home all your logs are already sorted and ready to open in Blackbox Explorer. Connect to the Pi's Wi-Fi hotspot from any phone to download them without a laptop.
 
 ---
 

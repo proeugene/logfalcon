@@ -26,6 +26,7 @@ class Config:
     # Storage
     storage_path: str = '/mnt/bbsyncer-logs'
     min_free_space_mb: int = 200
+    storage_pressure_cleanup: bool = True
 
     # Sync behaviour
     erase_after_sync: bool = True

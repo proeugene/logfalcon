@@ -27,12 +27,14 @@ HOTSPOT_IP="192.168.4.1"
 HOTSPOT_NETMASK="255.255.255.0"
 HOTSPOT_DHCP_START="192.168.4.2"
 HOTSPOT_DHCP_END="192.168.4.20"
+PASSWORD_SET_BY_ARG=0
+GENERATED_PASSWORD=0
 
 ### --- Parse arguments --- ###
 while [[ $# -gt 0 ]]; do
   case $1 in
     --ssid)      SSID="$2"; shift 2 ;;
-    --password)  WIFI_PASSWORD="$2"; shift 2 ;;
+    --password)  WIFI_PASSWORD="$2"; PASSWORD_SET_BY_ARG=1; shift 2 ;;
     *)           echo "Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -60,6 +62,17 @@ apt-get install -y \
 
 # Unblock Wi-Fi
 rfkill unblock wlan
+
+if [[ $PASSWORD_SET_BY_ARG -eq 0 ]]; then
+  WIFI_PASSWORD="$(
+    python3 - <<'PY'
+import secrets
+alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+print(''.join(secrets.choice(alphabet) for _ in range(12)))
+PY
+  )"
+  GENERATED_PASSWORD=1
+fi
 
 ### --- 2. System user --- ###
 echo "[2/8] Creating bbsyncer system user..."
@@ -171,6 +184,8 @@ systemctl enable avahi-daemon
 if [[ ! -f /boot/firmware/bbsyncer-config.txt ]]; then
   cp "$SCRIPT_DIR/boot/bbsyncer-config.txt" /boot/firmware/bbsyncer-config.txt
 fi
+sed -i "s/^SSID=.*/SSID=$SSID/" /boot/firmware/bbsyncer-config.txt
+sed -i "s/^PASSWORD=.*/PASSWORD=$WIFI_PASSWORD/" /boot/firmware/bbsyncer-config.txt
 
 ### --- 7. udev rule --- ###
 echo "[7/8] Installing udev rule..."
@@ -189,6 +204,14 @@ echo "=== Install complete! ==="
 echo ""
 echo "Wi-Fi hotspot: $SSID (password: $WIFI_PASSWORD)"
 echo "Web interface: http://$HOTSPOT_IP  or  http://blackboxdata.local"
+echo ""
+if [[ $GENERATED_PASSWORD -eq 1 ]]; then
+  echo "A unique hotspot password was generated for this install."
+  echo "Keep it somewhere safe before you leave for the field."
+  echo ""
+fi
+echo "Startup note: after boot, give the Pi up to 90 seconds to bring up Wi-Fi and the web UI."
+echo "The same SSID/password is mirrored into /boot/firmware/bbsyncer-config.txt for later edits."
 echo ""
 echo "To sync logs: plug a Betaflight FC into the Pi's USB OTG port."
 echo "To view logs: connect to the '$SSID' Wi-Fi network."

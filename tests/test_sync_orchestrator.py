@@ -108,6 +108,9 @@ class TestSyncOrchestratorSuccess:
         assert manifest['file']['bytes'] == len(flash_data)
         assert 'sha256' in manifest['file']
         assert manifest['erase_completed'] is False
+        assert manifest['timing']['stream_sec'] >= 0
+        assert manifest['timing']['verify_sec'] >= 0
+        assert manifest['timing']['total_sec'] >= manifest['timing']['stream_sec']
 
     def test_already_empty_flash(self, tmpdir):
         """Flash with used_size=0 should return ALREADY_EMPTY."""
@@ -189,6 +192,50 @@ class TestSyncOrchestratorSuccess:
 
         assert result == SyncResult.DRY_RUN
         client_instance.erase_flash.assert_not_called()
+
+    def test_auto_cleanup_reclaims_space(self, tmpdir):
+        flash_data = b'H7\x00\x01' * 4
+        cfg = make_config(tmpdir, erase_after_sync=False)
+        cfg.min_free_space_mb = 200
+        cfg.storage_pressure_cleanup = True
+        led = make_led()
+
+        with (
+            patch('bbsyncer.sync.orchestrator.MSPClient') as MockClient,
+            patch('bbsyncer.sync.orchestrator.free_mb', side_effect=[100.0, 250.0]),
+            patch(
+                'bbsyncer.sync.orchestrator.cleanup_oldest_sessions',
+                return_value=['fc_BTFL_uid-old/2026-01-01_120000'],
+            ) as mock_cleanup,
+        ):
+            client_instance = MockClient.return_value.__enter__.return_value
+            client_instance.get_api_version.return_value = (1, 42)
+            client_instance.get_fc_variant.return_value = b'BTFL'
+            client_instance.get_uid.return_value = 'deadbeef12345678'
+            client_instance.get_blackbox_config.return_value = {'device': BLACKBOX_DEVICE_FLASH}
+            client_instance.get_dataflash_summary.return_value = {
+                'flags': 0x03,
+                'sectors': 512,
+                'total_size': 8192,
+                'used_size': len(flash_data),
+                'supported': True,
+                'ready': True,
+            }
+            chunks = [(0, flash_data[:8]), (8, flash_data[8:])]
+            call_idx = [0]
+
+            def fake_receive(compression=False):
+                result = chunks[call_idx[0]]
+                call_idx[0] = min(call_idx[0] + 1, len(chunks) - 1)
+                return result
+
+            client_instance.receive_flash_read_response.side_effect = fake_receive
+
+            orch = SyncOrchestrator(cfg, led, dry_run=False)
+            result = orch.run('/dev/ttyACM0')
+
+        assert result == SyncResult.SUCCESS
+        mock_cleanup.assert_called_once()
 
 
 class TestSyncOrchestratorErrors:

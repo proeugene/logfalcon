@@ -11,6 +11,7 @@ BBSYNCER_CONF="/etc/bbsyncer/bbsyncer.toml"
 TAG="bbsyncer-firstboot"
 
 log() { logger -t "$TAG" "$*"; }
+escape_sed() { printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'; }
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
   log "No config file at $CONFIG_FILE — skipping."
@@ -55,12 +56,20 @@ if [[ ${#PASSWORD} -lt 8 || ${#PASSWORD} -gt 63 ]]; then
   exit 0
 fi
 
+if printf '%s' "$SSID$PASSWORD" | LC_ALL=C grep -q '[^[:print:]]'; then
+  log "ERROR: SSID or PASSWORD contained non-printable characters — skipping."
+  exit 0
+fi
+
+SSID_ESCAPED="$(escape_sed "$SSID")"
+PASSWORD_ESCAPED="$(escape_sed "$PASSWORD")"
+
 log "Applying config: SSID='$SSID'"
 
 # Update hostapd.conf
 if [[ -f "$HOSTAPD_CONF" ]]; then
-  sed -i "s/^ssid=.*/ssid=$SSID/" "$HOSTAPD_CONF"
-  sed -i "s/^wpa_passphrase=.*/wpa_passphrase=$PASSWORD/" "$HOSTAPD_CONF"
+  sed -i "s/^ssid=.*/ssid=$SSID_ESCAPED/" "$HOSTAPD_CONF"
+  sed -i "s/^wpa_passphrase=.*/wpa_passphrase=$PASSWORD_ESCAPED/" "$HOSTAPD_CONF"
   log "Updated $HOSTAPD_CONF"
 else
   log "WARNING: $HOSTAPD_CONF not found — skipped hostapd update."
@@ -68,8 +77,8 @@ fi
 
 # Update bbsyncer.toml
 if [[ -f "$BBSYNCER_CONF" ]]; then
-  sed -i "s/^hotspot_ssid = .*/hotspot_ssid = \"$SSID\"/" "$BBSYNCER_CONF"
-  sed -i "s/^hotspot_password = .*/hotspot_password = \"$PASSWORD\"/" "$BBSYNCER_CONF"
+  sed -i "s/^hotspot_ssid = .*/hotspot_ssid = \"$SSID_ESCAPED\"/" "$BBSYNCER_CONF"
+  sed -i "s/^hotspot_password = .*/hotspot_password = \"$PASSWORD_ESCAPED\"/" "$BBSYNCER_CONF"
   log "Updated $BBSYNCER_CONF"
 else
   log "WARNING: $BBSYNCER_CONF not found — skipped bbsyncer update."

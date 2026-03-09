@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
 from bbsyncer.fc.detector import FCInfo
+from bbsyncer.util.disk_space import free_bytes
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ def write_manifest(
     used_size: int,
     erase_completed: bool = False,
     erase_attempted: bool = False,
+    timing: dict[str, float] | None = None,
 ) -> Path:
     """Write manifest.json to session_dir. Returns path to the file."""
     manifest = {
@@ -69,19 +72,25 @@ def write_manifest(
         'erase_attempted': erase_attempted,
         'erase_completed': erase_completed,
     }
+    if timing:
+        manifest['timing'] = timing
     path = session_dir / MANIFEST_FILENAME
     _atomic_json_write(path, manifest)
     log.debug('Wrote manifest to %s', path)
     return path
 
 
-def update_manifest_erase(session_dir: Path, erase_completed: bool) -> None:
+def update_manifest_erase(
+    session_dir: Path, erase_completed: bool, timing: dict[str, float] | None = None
+) -> None:
     """Update erase_completed field in an existing manifest."""
     path = session_dir / MANIFEST_FILENAME
     try:
         data = json.loads(path.read_text())
         data['erase_completed'] = erase_completed
         data['erase_attempted'] = True
+        if timing:
+            data['timing'] = timing
         _atomic_json_write(path, data)
         log.debug('Updated manifest erase_completed=%s', erase_completed)
     except (OSError, json.JSONDecodeError) as exc:
@@ -116,3 +125,33 @@ def list_sessions(storage_root: Path) -> list[dict]:
                 }
             )
     return sessions
+
+
+def cleanup_oldest_sessions(storage_root: Path, required_free_bytes: int) -> list[str]:
+    """Delete oldest sessions until *required_free_bytes* is available.
+
+    Returns deleted session ids in deletion order.
+    """
+    deleted: list[str] = []
+    if required_free_bytes <= 0 or not storage_root.exists():
+        return deleted
+
+    candidates: list[tuple[str, Path]] = []
+    for fc_dir in sorted(storage_root.iterdir()):
+        if not fc_dir.is_dir():
+            continue
+        for session_dir in sorted(fc_dir.iterdir()):
+            if not session_dir.is_dir():
+                continue
+            candidates.append((f'{fc_dir.name}/{session_dir.name}', session_dir))
+
+    for session_id, session_dir in candidates:
+        if free_bytes(storage_root) >= required_free_bytes:
+            break
+        shutil.rmtree(session_dir)
+        if not any(session_dir.parent.iterdir()):
+            session_dir.parent.rmdir()
+        deleted.append(session_id)
+        log.warning('Deleted old session to reclaim storage: %s', session_id)
+
+    return deleted

@@ -6,8 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
+from bbsyncer.config import Config
 from bbsyncer.web import server as web_server_module
 from bbsyncer.web.server import (
+    _CSRF_TOKEN,
     _HTTPError,
     _make_handler,
     _render_index,
@@ -78,6 +80,7 @@ class TestRenderIndex:
     def test_empty_storage(self, tmp_path):
         html = _render_index(tmp_path)
         assert 'No sessions yet' in html
+        assert 'inner OTG port' in html
 
     def test_nonexistent_storage(self, tmp_path):
         html = _render_index(tmp_path / 'nonexistent')
@@ -86,6 +89,17 @@ class TestRenderIndex:
     def test_settings_link_in_header(self, storage):
         html = _render_index(storage)
         assert '/settings' in html
+
+    def test_low_space_warning(self, storage):
+        cfg = Config()
+        cfg.min_free_space_mb = 200
+        with (
+            patch('bbsyncer.web.server.load_config', return_value=cfg),
+            patch('bbsyncer.web.server.used_and_free_gb', return_value=(1.0, 0.1)),
+            patch('bbsyncer.web.server.free_mb', return_value=100.0),
+        ):
+            html = _render_index(storage)
+        assert 'Oldest sessions may be removed automatically' in html
 
 
 class _FakeRequest(io.BytesIO):
@@ -146,10 +160,11 @@ class TestSettingsPage:
         assert '200' in response.split('\r\n')[0]
         assert 'Settings' in response
         assert 'TestNet' in response
+        assert _CSRF_TOKEN in response
         assert 'form' in response.lower()
 
     def test_settings_post_validates_ssid(self, tmp_path):
-        body = b'ssid=&password=validpass1'
+        body = f'csrf_token={_CSRF_TOKEN}&ssid=&password=validpass1'.encode()
         with patch('bbsyncer.web.server._read_hostapd_config', return_value={}):
             response = _make_request_handler(
                 str(tmp_path),
@@ -162,7 +177,7 @@ class TestSettingsPage:
         assert 'SSID must be' in response
 
     def test_settings_post_validates_password(self, tmp_path):
-        body = b'ssid=ValidSSID&password=short'
+        body = f'csrf_token={_CSRF_TOKEN}&ssid=ValidSSID&password=short'.encode()
         with patch('bbsyncer.web.server._read_hostapd_config', return_value={}):
             response = _make_request_handler(
                 str(tmp_path),
@@ -174,12 +189,30 @@ class TestSettingsPage:
         assert '400' in response.split('\r\n')[0]
         assert 'Password must be' in response
 
+    def test_settings_post_requires_csrf_token(self, tmp_path):
+        body = b'ssid=ValidSSID&password=securepass123'
+        with patch('bbsyncer.web.server._read_hostapd_config', return_value={}):
+            response = _make_request_handler(
+                str(tmp_path),
+                'POST',
+                '/settings',
+                body=body,
+                headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            )
+        assert '403' in response.split('\r\n')[0]
+        assert 'Security check failed' in response
+
     def test_settings_post_success(self, tmp_path):
-        body = b'ssid=NewNetwork&password=securepass123'
+        body = f'csrf_token={_CSRF_TOKEN}&ssid=NewNetwork&password=securepass123'.encode()
         with (
             patch('bbsyncer.web.server._read_hostapd_config', return_value={}),
-            patch('bbsyncer.web.server._update_config_file', return_value=True) as mock_update,
-            patch('bbsyncer.web.server.subprocess.run') as mock_run,
+            patch('bbsyncer.web.server._write_hostapd_config', return_value=True) as mock_hostapd,
+            patch('bbsyncer.web.server._write_bbsyncer_config', return_value=True) as mock_app,
+            patch('bbsyncer.web.server._write_boot_config', return_value=True) as mock_boot,
+            patch(
+                'bbsyncer.web.server.subprocess.run',
+                return_value=type('Result', (), {'returncode': 0})(),
+            ) as mock_run,
         ):
             response = _make_request_handler(
                 str(tmp_path),
@@ -191,5 +224,30 @@ class TestSettingsPage:
         assert '200' in response.split('\r\n')[0]
         assert 'NewNetwork' in response
         assert 'Settings saved' in response
-        assert mock_update.call_count == 3
+        mock_hostapd.assert_called_once()
+        mock_app.assert_called_once()
+        mock_boot.assert_called_once()
         mock_run.assert_called_once()
+
+    def test_delete_requires_csrf_header(self, storage):
+        response = _make_request_handler(
+            str(storage), 'DELETE', '/sessions/fc_BTFL_uid-deadbeef/2026-02-26_143012'
+        )
+        assert '403' in response.split('\r\n')[0]
+
+    def test_health_endpoint(self, storage):
+        cfg = Config()
+        cfg.min_free_space_mb = 200
+        with (
+            patch(
+                'bbsyncer.web.server._read_hostapd_config',
+                return_value={'ssid': 'TestNet', 'wpa_passphrase': 'secret123'},
+            ),
+            patch('bbsyncer.web.server.load_config', return_value=cfg),
+            patch('bbsyncer.web.server.used_and_free_gb', return_value=(1.0, 0.1)),
+            patch('bbsyncer.web.server.free_mb', return_value=100.0),
+        ):
+            response = _make_request_handler(str(storage), 'GET', '/health')
+        assert '200' in response.split('\r\n')[0]
+        assert '"session_count": 1' in response
+        assert '"low_space": true' in response

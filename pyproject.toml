@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "betaflight-blackbox-field-sync"
-version = "0.1.0"
+version = "0.1.1"
 description = "Field blackbox log syncer for Betaflight FCs via Raspberry Pi Zero W"
 readme = "README.md"
 requires-python = ">=3.11"

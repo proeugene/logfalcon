@@ -32,6 +32,7 @@ from bbsyncer.fc.detector import (
 from bbsyncer.led.controller import LEDController, LEDState
 from bbsyncer.msp.client import MSPClient, MSPError
 from bbsyncer.storage.manifest import (
+    cleanup_oldest_sessions,
     make_session_dir,
     update_manifest_erase,
     write_manifest,
@@ -54,7 +55,7 @@ class SyncResult(Enum):
 
 # Shared sync status — read by web server (thread-safe)
 _status_lock = threading.Lock()
-_current_status: dict = {'state': 'idle', 'progress': 0}
+_current_status: dict = {'state': 'idle', 'progress': 0, 'message': 'Ready for the next sync.'}
 
 
 def get_status() -> dict:
@@ -62,10 +63,11 @@ def get_status() -> dict:
         return dict(_current_status)
 
 
-def _set_status(state: str, progress: int = 0) -> None:
+def _set_status(state: str, progress: int = 0, message: str = '') -> None:
     with _status_lock:
         _current_status['state'] = state
         _current_status['progress'] = progress
+        _current_status['message'] = message
 
 
 class SyncOrchestrator:
@@ -88,36 +90,44 @@ class SyncOrchestrator:
         except Exception as exc:
             log.exception('Unexpected error during sync: %s', exc)
             self.led.set_state(LEDState.ERROR_GENERAL)
-            _set_status('error')
+            _set_status(
+                'error', message='Unexpected sync error. Check the service log for details.'
+            )
             return SyncResult.ERROR
 
     def _run(self, port: str) -> SyncResult:  # noqa: C901
         cfg = self.config
+        total_started = time.monotonic()
+        timings: dict[str, float] = {}
 
         # --- Step 2: Identify FC ---
         log.info('Step 2: Identifying FC on %s', port)
-        _set_status('identifying')
+        _set_status('identifying', message='Checking the flight controller over MSP.')
+        identify_started = time.monotonic()
         with MSPClient(port, cfg.serial_baud, cfg.serial_timeout) as client:
             try:
                 fc_info = detect_fc(client)
             except (FCSDCardBlackbox, FCNotBetaflight, FCDetectionError) as exc:
                 log.error('FC detection failed: %s', exc)
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status('error', message=str(exc))
                 return SyncResult.ERROR
+            timings['identify_sec'] = round(time.monotonic() - identify_started, 3)
 
             log.info('FC identified: variant=%r uid=%s', fc_info.variant, fc_info.uid)
 
             # --- Step 3: Query flash state ---
             log.info('Step 3: Querying flash state')
-            _set_status('querying')
+            _set_status('querying', message='Reading blackbox flash usage from the FC.')
+            query_started = time.monotonic()
             try:
                 summary = client.get_dataflash_summary()
             except MSPError as exc:
                 log.error('Failed to get flash summary: %s', exc)
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status('error', message='Could not read the FC flash summary.')
                 return SyncResult.ERROR
+            timings['query_sec'] = round(time.monotonic() - query_started, 3)
 
             log.info(
                 'Flash: supported=%s ready=%s used=%d total=%d',
@@ -130,20 +140,22 @@ class SyncOrchestrator:
             if not summary['supported']:
                 log.error('FC flash not supported')
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status('error', message='This FC does not expose supported flash storage.')
                 return SyncResult.ERROR
 
             if not summary['ready']:
                 log.error('FC flash not ready (may be busy)')
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status(
+                    'error', message='The FC flash is busy right now. Try again in a moment.'
+                )
                 return SyncResult.ERROR
 
             used_size = summary['used_size']
             if used_size == 0:
                 log.info('Flash is empty — nothing to sync')
                 self.led.set_state(LEDState.ALREADY_EMPTY)
-                _set_status('idle')
+                _set_status('idle', message='Flash already empty — nothing to sync.')
                 return SyncResult.ALREADY_EMPTY
 
             # --- Step 4: Check Pi storage ---
@@ -154,14 +166,36 @@ class SyncOrchestrator:
             available_mb = free_mb(storage_path)
             log.info('Storage: required=%.1f MB available=%.1f MB', required_mb, available_mb)
             if available_mb < required_mb:
-                log.error(
-                    'Insufficient Pi storage: %.1f MB available, %.1f MB required',
-                    available_mb,
-                    required_mb,
-                )
-                self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
-                return SyncResult.ERROR
+                reclaimed_sessions: list[str] = []
+                if cfg.storage_pressure_cleanup:
+                    _set_status(
+                        'querying',
+                        message='Storage is tight, cleaning up the oldest sessions first.',
+                    )
+                    reclaimed_sessions = cleanup_oldest_sessions(
+                        storage_path,
+                        required_free_bytes=int(required_mb * 1024 * 1024),
+                    )
+                    available_mb = free_mb(storage_path)
+                    if reclaimed_sessions:
+                        log.warning(
+                            'Reclaimed storage by deleting %d old session(s): %s',
+                            len(reclaimed_sessions),
+                            ', '.join(reclaimed_sessions),
+                        )
+                    log.info('Storage after cleanup: available=%.1f MB', available_mb)
+                if available_mb < required_mb:
+                    log.error(
+                        'Insufficient Pi storage: %.1f MB available, %.1f MB required',
+                        available_mb,
+                        required_mb,
+                    )
+                    self.led.set_state(LEDState.ERROR_GENERAL)
+                    _set_status(
+                        'error',
+                        message='Not enough free space on the Pi SD card to copy this log safely.',
+                    )
+                    return SyncResult.ERROR
 
             # --- Step 5: Prepare output ---
             log.info('Step 5: Preparing output directory')
@@ -173,7 +207,8 @@ class SyncOrchestrator:
             # --- Step 6: Stream flash read ---
             log.info('Step 6: Reading %d bytes from flash → %s', used_size, bbl_path)
             self.led.set_state(LEDState.SYNCING)
-            _set_status('syncing', 0)
+            _set_status('syncing', 0, message='Copying blackbox flash to the Pi SD card.')
+            stream_started = time.monotonic()
 
             address = 0
             consecutive_errors = 0
@@ -203,7 +238,10 @@ class SyncOrchestrator:
                             log.error('Too many consecutive read errors — aborting')
                             writer.abort()
                             self.led.set_state(LEDState.ERROR_GENERAL)
-                            _set_status('error')
+                            _set_status(
+                                'error',
+                                message='Too many FC read errors. Try another USB cable and sync again.',
+                            )
                             return SyncResult.ERROR
                         time.sleep(0.1)
                         # Re-send the same request on error
@@ -225,7 +263,10 @@ class SyncOrchestrator:
                             log.error('Too many address mismatches — aborting')
                             writer.abort()
                             self.led.set_state(LEDState.ERROR_GENERAL)
-                            _set_status('error')
+                            _set_status(
+                                'error',
+                                message='The FC returned inconsistent data. Reconnect and try again.',
+                            )
                             return SyncResult.ERROR
                         # Re-send the same request on mismatch
                         client.send_flash_read_request(
@@ -255,7 +296,9 @@ class SyncOrchestrator:
                     address = next_address
 
                     progress = int(address * 100 / used_size)
-                    _set_status('syncing', progress)
+                    _set_status(
+                        'syncing', progress, message='Copying blackbox flash to the Pi SD card.'
+                    )
                     if address % (cfg.flash_chunk_size * 64) < cfg.flash_chunk_size:
                         log.debug('Read 0x%08x / 0x%08x (%d%%)', address, used_size, progress)
 
@@ -263,36 +306,45 @@ class SyncOrchestrator:
                 log.exception('Unexpected error during flash read: %s', exc)
                 writer.abort()
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status('error', message='Unexpected error while copying flash data.')
                 return SyncResult.ERROR
 
             writer.close()
             log.info('Flash read complete: %d bytes written', writer.bytes_written)
+            timings['stream_sec'] = round(time.monotonic() - stream_started, 3)
 
             # --- Step 7: Verify integrity ---
             log.info('Step 7: Verifying integrity')
             self.led.set_state(LEDState.VERIFYING)
-            _set_status('verifying')
+            _set_status('verifying', message='Verifying the copied file before erase.')
+            verify_started = time.monotonic()
 
             if writer.bytes_written != used_size:
                 log.error(
                     'Size mismatch: wrote %d bytes, expected %d', writer.bytes_written, used_size
                 )
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status(
+                    'error', message='The copied file size did not match the FC flash size.'
+                )
                 return SyncResult.ERROR
 
             match, file_sha256 = writer.verify_against_file()
             if not match:
                 log.error('SHA-256 verification failed — NOT erasing FC flash')
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status(
+                    'error',
+                    message='Verification failed, so the FC flash was left untouched.',
+                )
                 return SyncResult.ERROR
 
             log.info('Integrity OK — SHA-256: %s', file_sha256)
+            timings['verify_sec'] = round(time.monotonic() - verify_started, 3)
 
             # --- Step 8: Write manifest ---
             log.info('Step 8: Writing manifest')
+            timings['total_sec'] = round(time.monotonic() - total_started, 3)
             write_manifest(
                 session_dir,
                 fc_info,
@@ -300,32 +352,39 @@ class SyncOrchestrator:
                 used_size=used_size,
                 erase_completed=False,
                 erase_attempted=False,
+                timing=timings,
             )
 
             if self.dry_run:
                 log.info('DRY RUN — skipping erase')
                 self.led.set_state(LEDState.SUCCESS)
-                _set_status('idle')
+                _set_status('idle', message='Copy complete. Dry run kept the FC flash untouched.')
                 return SyncResult.DRY_RUN
 
             if not cfg.erase_after_sync:
                 log.info('erase_after_sync=false — skipping erase')
                 self.led.set_state(LEDState.SUCCESS)
-                _set_status('idle')
+                _set_status('idle', message='Copy complete. Erase was skipped by configuration.')
                 return SyncResult.SUCCESS
 
             # --- Step 9: Erase FC flash ---
             log.info('Step 9: Erasing FC flash')
             self.led.set_state(LEDState.ERASING)
-            _set_status('erasing')
+            _set_status('erasing', message='Erasing the FC flash now that the copy is verified.')
+            erase_started = time.monotonic()
 
             erase_ok = self._wait_for_erase(client)
-            update_manifest_erase(session_dir, erase_completed=erase_ok)
+            timings['erase_sec'] = round(time.monotonic() - erase_started, 3)
+            timings['total_sec'] = round(time.monotonic() - total_started, 3)
+            update_manifest_erase(session_dir, erase_completed=erase_ok, timing=timings)
 
             if not erase_ok:
                 log.error('Flash erase did not complete within timeout')
                 self.led.set_state(LEDState.ERROR_GENERAL)
-                _set_status('error')
+                _set_status(
+                    'error',
+                    message='Copy succeeded, but erase did not finish before timeout.',
+                )
                 return SyncResult.ERROR
 
             log.info('Flash erase confirmed')
@@ -333,7 +392,7 @@ class SyncOrchestrator:
         # --- Step 10: Signal result ---
         log.info('Step 10: Sync complete — SUCCESS')
         self.led.set_state(LEDState.SUCCESS)
-        _set_status('idle')
+        _set_status('idle', message='Sync complete — safe to unplug and fly again.')
         return SyncResult.SUCCESS
 
     def _wait_for_erase(self, client: MSPClient) -> bool:

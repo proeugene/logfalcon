@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/proeugene/betaflight-blackbox-field-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/proeugene/betaflight-blackbox-field-sync/actions/workflows/ci.yml)
 
-A pocket-sized device based on a **Raspberry Pi Zero W** that automatically downloads and clears your Betaflight FC's blackbox flash — while you're standing at the field, no laptop required.
+A pocket-sized device based on a **Raspberry Pi Zero W** that automatically downloads and clears your Betaflight FC's blackbox flash while you're still standing at the field.
 
-Plug your FC into the Pi, wait for the LED, re-plug the FC into your quad, and fly again. Your logs are saved on the Pi's SD card and available over Wi-Fi from any phone.
+Plug your FC into the Pi, wait for the LED, plug the FC back into your quad, and fly again. Your logs stay on the Pi's SD card and are available over Wi-Fi from any phone or laptop.
 
 ---
 
@@ -14,9 +14,9 @@ FPV pilots who use internal SPI flash for blackbox logging run into a recurring 
 
 ## The Solution
 
-A Pi Zero W that lives in your field bag. It speaks Betaflight's MSP protocol over USB, streams the entire flash contents to its own SD card, verifies the copy with SHA-256, erases the FC flash, and blinks the LED when it's done. The whole thing is automatic — plug in, wait ~30 seconds, done.
+A Pi Zero W that lives in your field bag. It speaks Betaflight's MSP protocol over USB, streams the entire flash contents to its own SD card, verifies the copy with SHA-256, erases the FC flash, and blinks the LED when it's done. The whole thing is automatic — plug in, wait about 30-40 seconds for a typical 2 MB flash, done.
 
-All logs accumulate on the Pi's SD card across every flying session and every FC you use. When you get home (or right at the field), connect to the Pi's Wi-Fi hotspot and download any `.bbl` file from a browser.
+Logs stay on the Pi's SD card across flying sessions and FCs unless storage pressure forces the oldest stored sessions to be removed to protect reserve free space for a new safe sync. When you get home (or right at the field), connect to the Pi's Wi-Fi hotspot and download any `.bbl` file from a browser.
 
 ---
 
@@ -32,7 +32,7 @@ All logs accumulate on the Pi's SD card across every flying session and every FC
 7. Tap Download → open in Blackbox Explorer
 ```
 
-Total time at the field: ~30 seconds.
+Typical field time: about **30-40 seconds for a 2 MB flash**.
 
 ---
 
@@ -48,8 +48,14 @@ Total time at the field: ~30 seconds.
 
 No extra hardware needed for the LED — the Pi's built-in ACT LED is used.
 
+> **Important:** The Pi Zero has **two** micro-USB ports.  
+> Use the **inner USB OTG/data port** for the flight controller.  
+> Use the **outer PWR_IN port** for the battery bank.
+
 > **Important:** This works with **internal SPI flash** blackbox storage only (the most common setup — W25Q128, M25P16, etc.).
 > FC-side SD cards cannot be read over MSP. If your FC uses an SD card for blackbox, remove that card and read it directly.
+
+> **Check this before field use:** In Betaflight Configurator, make sure **Blackbox Device = SPI Flash**.
 
 ---
 
@@ -57,14 +63,16 @@ No extra hardware needed for the LED — the Pi's built-in ACT LED is used.
 
 1. **Download** the latest `bbsyncer-*.img.xz` from [Releases](https://github.com/proeugene/betaflight-blackbox-field-sync/releases)
 2. **Burn** it to a microSD card using [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [Balena Etcher](https://etcher.balena.io/)
-3. **(Optional) Customize** — before ejecting the SD card, open the `boot` partition and edit `bbsyncer-config.txt`:
+3. **(Optional, recommended) Customize** — before ejecting the SD card, open the `boot` partition and edit `bbsyncer-config.txt`:
    ```ini
    SSID=BF-Blackbox
    PASSWORD=fpvpilot
    ```
 4. **Insert** the SD card into your Pi Zero W and power on
-5. **Fly** — the Pi is ready. Plug in an FC to sync, connect to the Wi-Fi to download logs.
+5. **Wait up to 90 seconds** for the Pi to finish booting, bring up Wi-Fi, and start the web UI
+6. **Fly** — plug in an FC to sync, then connect to the Wi-Fi later to download logs
 
+> If you keep the default password, change it from the web UI before flying at a shared field.
 > You can also change the SSID and password later from the web UI: connect to the hotspot → click the ⚙ gear icon.
 
 ---
@@ -88,18 +96,30 @@ The install script handles everything:
 - systemd units: one-shot sync service + always-on web server
 - udev rule to trigger sync automatically when an FC is plugged in
 
+If you do **not** pass `--password`, the install script generates a unique 12-character hotspot password for you and prints it at the end.
+
 ---
 
 ## Retrieving Your Logs
 
 1. Power on the Pi Zero W
-2. On your phone or laptop: connect to Wi-Fi **`BF-Blackbox`** (default password: `fpvpilot`)
+2. On your phone or laptop: connect to Wi-Fi **`BF-Blackbox`** (default image password: `fpvpilot`)
 3. **Your phone automatically pops up the blackbox page** — same as airport Wi-Fi captive portals
    - If that gets dismissed: open any browser and go to `http://blackboxdata.local` or `http://192.168.4.1`
+   - If captive portal detection does not trigger: this is normal on some phones, tablets, VPN setups, and laptops. Open the URL manually.
 4. You'll see all your sessions listed, grouped by FC
 5. Tap **Download .bbl** — opens in [Betaflight Blackbox Explorer](https://github.com/betaflight/blackbox-log-viewer) on desktop, or the [Blackbox Explorer app](https://apps.apple.com/app/betaflight-blackbox-explorer) on iOS/Android
 
 The web UI also shows Pi SD card free space, lets you delete old sessions to reclaim space, displays live sync status while a download is in progress, and has a ⚙ Settings page to change the Wi-Fi SSID and password.
+
+### If the captive portal does not pop up
+
+Open one of these manually in any browser:
+
+- `http://blackboxdata.local`
+- `http://192.168.4.1`
+
+If `blackboxdata.local` does not work, use `192.168.4.1`.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -136,7 +156,7 @@ The Pi's built-in green LED tells you exactly what's happening.
 
 ## How Logs Are Stored
 
-Logs accumulate on the Pi's SD card and are **never automatically deleted** by the sync process. Only the FC's flash is erased (and only after the copy is verified).
+Logs accumulate on the Pi's SD card and are kept unless storage pressure forces cleanup. If the Pi is too full to safely copy a new log while preserving the configured reserve space, the syncer can automatically delete the **oldest** stored sessions first. The FC's flash is still erased only after the new copy is verified.
 
 ```
 /mnt/bbsyncer-logs/
@@ -180,6 +200,9 @@ storage_path = "/mnt/bbsyncer-logs"
 
 # How much free space to always keep on the SD card
 min_free_space_mb = 200
+
+# If the SD card gets too full, delete oldest stored sessions to stay above reserve
+storage_pressure_cleanup = true
 ```
 
 ---
@@ -204,14 +227,35 @@ journalctl -u bbsyncer-web -f
 - Confirm your FC uses USB CDC-ACM (it shows up as `/dev/ttyACM0` on a normal PC with Configurator)
 - Check that the FC's STM32 USB VID is `0x0483`: `lsusb | grep 0483`
 - Make sure you're using the Pi's OTG port (the inner micro-USB, not the PWR port)
+- Try a shorter or better-quality USB cable if the FC connects intermittently
 
 **Sync seems slow**
 
-The Pi Zero W's single-core 1 GHz CPU and USB 2.0 are the bottleneck. A 2 MB flash typically takes 20–40 seconds. The Pi Zero **2** W is noticeably faster (~2× CPU).
+The Pi Zero W's single-core 1 GHz CPU and USB 2.0 are the bottleneck. A 2 MB flash typically takes **30-40 seconds**. The Pi Zero **2** W is noticeably faster (~2× CPU).
+
+Typical timing:
+
+- **1 MB flash:** ~10-20 seconds
+- **2 MB flash:** ~30-40 seconds
+- **4 MB flash:** ~50-80 seconds
+
+If it takes much longer than expected:
+
+- try a shorter OTG cable
+- make sure the FC is powered cleanly over USB
+- check `journalctl -u "bbsyncer@ttyACM0" -n 50` for repeated read errors
 
 **"FC uses SD card" error**
 
 Your FC is configured to log to an SD card instead of internal flash. MSP cannot read FC-side SD cards. Set your FC blackbox device to "SPI Flash" in Configurator, or remove the FC SD card and read it directly.
+
+**Health check / support snapshot**
+
+```bash
+curl http://192.168.4.1/health
+```
+
+This returns the current sync state, uptime, session count, disk usage, and whether the launch-default hotspot password is still in use.
 
 ---
 

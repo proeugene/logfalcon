@@ -6,9 +6,10 @@ serial_baud = 115200
 serial_port = ""           # empty = auto-detect /dev/ttyACM*
 serial_timeout = 5.0
 
-# Pi SD card storage path (never auto-deleted by sync)
+# Pi SD card storage path
 storage_path = "/mnt/bbsyncer-logs"
 min_free_space_mb = 200
+storage_pressure_cleanup = true  # auto-delete oldest sessions only if needed to stay above reserve
 
 # Sync behaviour
 erase_after_sync = true    # set to false for dry-run / testing

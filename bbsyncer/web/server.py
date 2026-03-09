@@ -5,6 +5,7 @@ Routes:
   GET  /settings                  Settings page (Wi-Fi config)
   POST /settings                  Save Wi-Fi settings
   GET  /sessions                  JSON: all sessions
+  GET  /health                    JSON: health and support snapshot
   GET  /download/<session_id>/raw_flash.bbl
   GET  /download/<session_id>/manifest.json
   GET  /status                    JSON: current sync status
@@ -22,7 +23,7 @@ import html
 import json
 import logging
 import os
-import re
+import secrets
 import shutil
 import socketserver
 import subprocess
@@ -31,14 +32,19 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs
 
+from bbsyncer.config import load_config
 from bbsyncer.storage.manifest import list_sessions
 from bbsyncer.sync.orchestrator import get_status
-from bbsyncer.util.disk_space import used_and_free_gb
+from bbsyncer.util.disk_space import free_mb, used_and_free_gb
 
 log = logging.getLogger(__name__)
 
 _sessions_cache: tuple[float, list] = (0.0, [])
 _SESSIONS_TTL = 10.0  # seconds
+_SERVER_STARTED_AT = _time.monotonic()
+_CSRF_TOKEN = secrets.token_urlsafe(24)
+_DEFAULT_HOTSPOT_PASSWORD = 'fpvpilot'  # noqa: S105
+_ALLOWED_DOWNLOADS = frozenset({'raw_flash.bbl', 'manifest.json'})
 
 
 def _get_sessions(storage: Path) -> list:
@@ -92,22 +98,99 @@ def _read_hostapd_config() -> dict[str, str]:
         return {}
 
 
-def _update_config_file(path: str, replacements: dict[str, str]) -> bool:
-    """Replace lines starting with key= (or key =) for each key in replacements."""
+def _rewrite_prefixed_lines(path: str, replacements: dict[str, str]) -> bool:
+    """Replace entire lines whose stripped content starts with a known prefix."""
     try:
         text = Path(path).read_text()
-        for key, value in replacements.items():
-            text = re.sub(
-                rf'^(\s*{re.escape(key)}\s*=).*$',
-                rf'\g<1>{value}',
-                text,
-                flags=re.MULTILINE,
-            )
-        Path(path).write_text(text)
+        trailing_newline = text.endswith('\n')
+        remaining = dict(replacements)
+        updated_lines: list[str] = []
+        for line in text.splitlines():
+            stripped = line.lstrip()
+            replacement = None
+            for prefix, new_line in tuple(remaining.items()):
+                if stripped.startswith(prefix):
+                    indent = line[: len(line) - len(stripped)]
+                    replacement = f'{indent}{new_line}'
+                    remaining.pop(prefix)
+                    break
+            updated_lines.append(replacement if replacement is not None else line)
+        updated_lines.extend(remaining.values())
+        Path(path).write_text('\n'.join(updated_lines) + ('\n' if trailing_newline else ''))
         return True
     except OSError:
         log.warning('Could not update %s', path)
         return False
+
+
+def _write_hostapd_config(ssid: str, password: str) -> bool:
+    return _rewrite_prefixed_lines(
+        _HOSTAPD_CONF,
+        {
+            'ssid=': f'ssid={ssid}',
+            'wpa_passphrase=': f'wpa_passphrase={password}',
+        },
+    )
+
+
+def _write_bbsyncer_config(ssid: str, password: str) -> bool:
+    return _rewrite_prefixed_lines(
+        _BBSYNCER_TOML,
+        {
+            'hotspot_ssid =': f'hotspot_ssid = {json.dumps(ssid)}',
+            'hotspot_password =': f'hotspot_password = {json.dumps(password)}',
+        },
+    )
+
+
+def _write_boot_config(ssid: str, password: str) -> bool:
+    return _rewrite_prefixed_lines(
+        _BOOT_CONFIG,
+        {
+            'SSID=': f'SSID={ssid}',
+            'PASSWORD=': f'PASSWORD={password}',
+        },
+    )
+
+
+def _validate_hotspot_value(value: str, minimum: int, maximum: int, label: str) -> str | None:
+    if len(value) < minimum or len(value) > maximum:
+        return f'{label} must be {minimum}\u2013{maximum} characters.'
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        return f'{label} must use printable characters only.'
+    return None
+
+
+def _health_payload(storage: Path) -> dict[str, object]:
+    status = get_status()
+    cfg = load_config()
+    try:
+        used_gb, free_gb = used_and_free_gb(storage)
+        free_storage_mb = round(free_mb(storage), 1)
+    except OSError:
+        used_gb, free_gb = 0.0, 0.0
+        free_storage_mb = 0.0
+    hostapd = _read_hostapd_config()
+    return {
+        'ok': status.get('state') != 'error',
+        'uptime_sec': int(_time.monotonic() - _SERVER_STARTED_AT),
+        'status': status,
+        'session_count': len(_get_sessions(storage)),
+        'storage': {
+            'used_gb': round(used_gb, 2),
+            'free_gb': round(free_gb, 2),
+            'free_mb': free_storage_mb,
+            'reserve_mb': cfg.min_free_space_mb,
+            'storage_pressure_cleanup': cfg.storage_pressure_cleanup,
+            'low_space': free_storage_mb < cfg.min_free_space_mb,
+        },
+        'hotspot': {
+            'ssid': hostapd.get('ssid', ''),
+            'default_password_in_use': (
+                hostapd.get('wpa_passphrase', '') == _DEFAULT_HOTSPOT_PASSWORD
+            ),
+        },
+    }
 
 
 class _HTTPError(Exception):
@@ -129,7 +212,13 @@ def _render_sessions(sessions: list) -> str:
         return (
             '<div class="empty-state">'
             '<div class="icon">📭</div>'
-            '<p>No sessions yet.<br>Plug in a Betaflight FC to start syncing.</p>'
+            '<p>No sessions yet.</p>'
+            '<ol>'
+            '<li>Power on the Pi and give the hotspot up to 90 seconds to appear.</li>'
+            '<li>Join the Wi-Fi network, then plug the FC into the Pi&apos;s inner OTG port.</li>'
+            '<li>Make sure the FC is logging to SPI flash, not an FC-side SD card.</li>'
+            '<li>Wait for the LED success pattern, then refresh this page.</li>'
+            '</ol>'
             '</div>'
         )
     parts: list[str] = []
@@ -155,6 +244,11 @@ def _render_sessions(sessions: list) -> str:
 
         erased_cls = 'erased' if erased else 'no-erase'
         erased_txt = 'Erased' if erased else 'Not erased'
+        erased_title = (
+            'Flash copy verified and FC erase completed.'
+            if erased
+            else 'The log was copied safely, but the FC flash still needs attention.'
+        )
         sha_html = (
             f'<span title="{_e(sha256)}">SHA-256: {_e(sha256[:12])}…</span>' if sha256 else ''
         )
@@ -168,7 +262,7 @@ def _render_sessions(sessions: list) -> str:
             f'<div class="session-card">'
             f'<div class="session-header">'
             f'<span class="session-title">{_e(session["session_dir"].replace("_", " "))}</span>'
-            f'<span class="badge {erased_cls}">{erased_txt}</span>'
+            f'<span class="badge {erased_cls}" title="{_e(erased_title)}">{erased_txt}</span>'
             f'</div>'
             f'<div class="session-meta">'
             f'<span>{file_mb} MB</span>'
@@ -191,13 +285,27 @@ def _render_sessions(sessions: list) -> str:
 
 def _render_index(storage: Path) -> str:
     sessions = _get_sessions(storage)
+    status = get_status()
+    cfg = load_config()
     try:
         used_gb, free_gb = used_and_free_gb(storage)
+        free_storage_mb = free_mb(storage)
     except OSError:
         used_gb, free_gb = 0.0, 0.0
+        free_storage_mb = 0.0
     total_gb = used_gb + free_gb
     pct = int(used_gb / total_gb * 100) if total_gb > 0 else 0
     sessions_html = _render_sessions(sessions)
+    status_message = _e(status.get('message', 'Ready for the next sync.'))
+    storage_warning_html = ''
+    if free_storage_mb < cfg.min_free_space_mb:
+        storage_warning_html = (
+            '<div class="warning-card">'
+            f'Low space: only {_e(round(free_storage_mb, 1))} MB free. '
+            'Oldest sessions may be removed automatically during the next sync '
+            f'to stay above the {_e(cfg.min_free_space_mb)} MB reserve.'
+            '</div>'
+        )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -256,6 +364,32 @@ def _render_index(storage: Path) -> str:
       height: 100%;
       border-radius: 4px;
       transition: width 0.3s;
+    }}
+    .help-card {{
+      background: #141c2c;
+      border: 1px solid #294263;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      color: #b7d0f5;
+      font-size: 0.85rem;
+    }}
+    .help-card strong {{ color: #ffffff; }}
+    .help-card ol {{ margin: 10px 0 0 18px; padding: 0; }}
+    .help-card li {{ margin-bottom: 6px; }}
+    .warning-card {{
+      background: #3a2a10;
+      border: 1px solid #704d15;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      color: #ffca80;
+      font-size: 0.85rem;
+    }}
+    #status-detail {{
+      margin-top: 6px;
+      color: #8f90a8;
+      font-size: 0.8rem;
     }}
     .fc-group {{ margin-bottom: 20px; }}
     .fc-group summary {{
@@ -324,6 +458,13 @@ def _render_index(storage: Path) -> str:
       color: #505068;
     }}
     .empty-state .icon {{ font-size: 3rem; margin-bottom: 12px; }}
+    .empty-state ol {{
+      display: inline-block;
+      margin: 12px auto 0;
+      padding-left: 18px;
+      text-align: left;
+      color: #7f8098;
+    }}
     .progress-bar-track {{
       background: #2e2e40;
       border-radius: 3px;
@@ -363,7 +504,20 @@ def _render_index(storage: Path) -> str:
     <div class="disk-bar-track">
       <div class="disk-bar-fill" style="width: {pct}%"></div>
     </div>
+    <div id="status-detail">{status_message}</div>
   </div>
+
+  <div class="help-card">
+    <strong>Field quick start</strong>
+    <ol>
+      <li>Power on the Pi and wait up to 90 seconds for Wi-Fi to appear.</li>
+      <li>Join the hotspot, then plug the FC into the Pi's inner OTG USB port.</li>
+      <li>Wait for the LED success pattern before unplugging the FC.</li>
+      <li>Download the <code>.bbl</code> later from this page and open it in Blackbox Explorer.</li>
+    </ol>
+  </div>
+
+  {storage_warning_html}
 
   {sessions_html}
 </main>
@@ -375,6 +529,7 @@ def _render_index(storage: Path) -> str:
       .then(r => r.json())
       .then(data => {{
         const badge = document.getElementById('status-badge');
+        const detail = document.getElementById('status-detail');
         const state = data.state || 'idle';
         const progress = data.progress || 0;
         const labels = {{
@@ -382,6 +537,7 @@ def _render_index(storage: Path) -> str:
           querying: 'Querying flash\u2026', syncing: 'Syncing\u2026',
           verifying: 'Verifying\u2026', erasing: 'Erasing\u2026', error: 'Error'
         }};
+        detail.textContent = data.message || 'Ready for the next sync.';
         badge.textContent = (labels[state] || state) +
           (state === 'syncing' && progress > 0 ? ` ${{progress}}%` : '');
         badge.className = '';
@@ -411,7 +567,10 @@ def _render_index(storage: Path) -> str:
     if (!confirm('Delete this session from the Pi?\\n\\nMake sure you have downloaded the .bbl file first.')) return;
     btn.disabled = true;
     btn.textContent = 'Deleting\u2026';
-    fetch('/sessions/' + sessionId, {{ method: 'DELETE' }})
+    fetch('/sessions/' + sessionId, {{
+      method: 'DELETE',
+      headers: {{ 'X-CSRF-Token': '{_e(_CSRF_TOKEN)}' }}
+    }})
       .then(r => r.json())
       .then(data => {{
         if (data.deleted) {{
@@ -486,10 +645,19 @@ def _render_settings(message: str = '', error: bool = False) -> str:
     hostapd = _read_hostapd_config()
     current_ssid = _e(hostapd.get('ssid', 'Unknown'))
     current_pass = _e(hostapd.get('wpa_passphrase', 'Unknown'))
+    using_default_password = hostapd.get('wpa_passphrase', '') == _DEFAULT_HOTSPOT_PASSWORD
     msg_html = ''
     if message:
         cls = 'msg-error' if error else 'msg-success'
         msg_html = f'<div class="{cls}">{_e(message)}</div>'
+    warning_html = ''
+    if using_default_password:
+        warning_html = (
+            '<div class="msg-error">'
+            'This Pi is still using the launch-default hotspot password. '
+            'Change it before flying at a shared field.'
+            '</div>'
+        )
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -505,11 +673,13 @@ def _render_settings(message: str = '', error: bool = False) -> str:
 <main>
   <a class="back-link" href="/">&larr; Back</a>
   {msg_html}
+  {warning_html}
   <div class="current-info">
     <strong>Current SSID:</strong> {current_ssid}<br>
     <strong>Current Password:</strong> {current_pass}
   </div>
   <form method="POST" action="/settings">
+    <input type="hidden" name="csrf_token" value="{_e(_CSRF_TOKEN)}">
     <div class="form-group">
       <label for="ssid">New SSID (1–32 characters)</label>
       <input type="text" id="ssid" name="ssid" required minlength="1" maxlength="32">
@@ -518,6 +688,9 @@ def _render_settings(message: str = '', error: bool = False) -> str:
       <label for="password">New Password (8–63 characters)</label>
       <input type="password" id="password" name="password" required minlength="8" maxlength="63">
     </div>
+    <p style="font-size:0.8rem; color:#a0a0b8;">
+      Use printable characters only. Avoid copy/pasting hidden line breaks from password managers.
+    </p>
     <button type="submit" class="btn-save">Save</button>
   </form>
 </main>
@@ -542,6 +715,8 @@ def _resolve_session_path(storage: Path, session_id: str) -> Path:
 
 
 def _resolve_session_file(storage: Path, session_id: str, filename: str) -> Path:
+    if filename not in _ALLOWED_DOWNLOADS:
+        raise _HTTPError(400)
     session_path = _resolve_session_path(storage, session_id)
     file_path = session_path / filename
     if not file_path.exists():
@@ -564,6 +739,8 @@ def _make_handler(storage_path: str) -> type:
                     self._send_json(_get_sessions(storage))
                 elif path == '/status':
                     self._send_json(get_status())
+                elif path == '/health':
+                    self._send_json(_health_payload(storage))
                 elif path.startswith('/download/'):
                     self._handle_download(path[len('/download/') :])
                 elif path == '/settings':
@@ -580,6 +757,7 @@ def _make_handler(storage_path: str) -> type:
             path = self.path.split('?')[0]
             try:
                 if path.startswith('/sessions/'):
+                    self._require_csrf_header()
                     self._handle_delete_session(path[len('/sessions/') :])
                 else:
                     self._send_error_response(404)
@@ -606,40 +784,74 @@ def _make_handler(storage_path: str) -> type:
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length).decode('utf-8')
             params = parse_qs(body)
+            csrf_token = params.get('csrf_token', [''])[0]
             ssid = params.get('ssid', [''])[0].strip()
             password = params.get('password', [''])[0].strip()
-
-            if not ssid or len(ssid) > 32:
+            if csrf_token != _CSRF_TOKEN:
                 self._send_html(
-                    _render_settings('SSID must be 1–32 characters.', error=True), status=400
-                )
-                return
-            if len(password) < 8 or len(password) > 63:
-                self._send_html(
-                    _render_settings('Password must be 8–63 characters.', error=True), status=400
+                    _render_settings('Security check failed. Reload and try again.', error=True),
+                    status=403,
                 )
                 return
 
-            _update_config_file(_HOSTAPD_CONF, {'ssid': ssid, 'wpa_passphrase': password})
-            _update_config_file(
-                _BBSYNCER_TOML,
-                {'hotspot_ssid': f' "{ssid}"', 'hotspot_password': f' "{password}"'},
-            )
-            _update_config_file(_BOOT_CONFIG, {'SSID': ssid, 'PASSWORD': password})
+            ssid_error = _validate_hotspot_value(ssid, 1, 32, 'SSID')
+            if ssid_error:
+                self._send_html(_render_settings(ssid_error, error=True), status=400)
+                return
+            password_error = _validate_hotspot_value(password, 8, 63, 'Password')
+            if password_error:
+                self._send_html(_render_settings(password_error, error=True), status=400)
+                return
+
+            if not all(
+                (
+                    _write_hostapd_config(ssid, password),
+                    _write_bbsyncer_config(ssid, password),
+                    _write_boot_config(ssid, password),
+                )
+            ):
+                self._send_html(
+                    _render_settings(
+                        'Could not save every hotspot setting cleanly. Review the Pi before flying.',
+                        error=True,
+                    ),
+                    status=500,
+                )
+                return
 
             try:
-                subprocess.run(
+                result = subprocess.run(
                     ['systemctl', 'restart', 'hostapd'],
                     capture_output=True,
                     check=False,
+                    timeout=10,
                 )
-            except OSError:
+            except (OSError, subprocess.TimeoutExpired):
                 log.warning('Could not restart hostapd')
+                self._send_html(
+                    _render_settings(
+                        'Settings were saved, but hostapd could not restart cleanly. Reboot the Pi before flying.',
+                        error=True,
+                    ),
+                    status=500,
+                )
+                return
+            if result.returncode != 0:
+                log.warning('hostapd restart failed with code %s', result.returncode)
+                self._send_html(
+                    _render_settings(
+                        'Settings were saved, but Wi-Fi restart failed. Reboot the Pi before flying.',
+                        error=True,
+                    ),
+                    status=500,
+                )
+                return
 
             msg = (
                 f'Settings saved! Wi-Fi hotspot is now: {ssid}. '
                 'You may need to reconnect to the new network.'
             )
+            log.info('Hotspot settings updated from %s to SSID=%s', self.client_address[0], ssid)
             self._send_html(_render_settings(msg))
 
         def _handle_download(self, sub_path: str) -> None:
@@ -662,8 +874,12 @@ def _make_handler(storage_path: str) -> type:
             shutil.rmtree(session_path)
             global _sessions_cache
             _sessions_cache = (0.0, [])  # invalidate
-            log.info('Deleted session: %s', session_path)
+            log.info('Deleted session from %s: %s', self.client_address[0], session_path)
             self._send_json({'deleted': True, 'session_id': session_id})
+
+        def _require_csrf_header(self) -> None:
+            if self.headers.get('X-CSRF-Token', '') != _CSRF_TOKEN:
+                raise _HTTPError(403)
 
         def _send_body(self, body: bytes, content_type: str, status: int = 200) -> None:
             accept_enc = self.headers.get('Accept-Encoding', '')

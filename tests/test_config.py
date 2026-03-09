@@ -10,16 +10,18 @@ class TestLoadConfig:
         assert cfg.serial_baud == 115200
         assert cfg.storage_path == '/mnt/bbsyncer-logs'
         assert cfg.erase_after_sync is True
+        assert cfg.storage_pressure_cleanup is True
 
     def test_load_from_file(self, tmp_path):
         toml_file = tmp_path / 'test.toml'
         toml_file.write_text(
-            'serial_baud = 230400\nstorage_path = "/tmp/test-logs"\nerase_after_sync = false\n'
+            'serial_baud = 230400\nstorage_path = "/tmp/test-logs"\nerase_after_sync = false\nstorage_pressure_cleanup = false\n'
         )
         cfg = load_config(str(toml_file))
         assert cfg.serial_baud == 230400
         assert cfg.storage_path == '/tmp/test-logs'
         assert cfg.erase_after_sync is False
+        assert cfg.storage_pressure_cleanup is False
 
     def test_partial_config_keeps_defaults(self, tmp_path):
         toml_file = tmp_path / 'partial.toml'

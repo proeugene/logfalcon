@@ -51,7 +51,39 @@ find /opt /usr/lib/python3 -name '__pycache__' -type d \
     -exec rm -rf {} + 2>/dev/null || true
 rm -rf /root/.cache/pip /home/*/.cache/pip 2>/dev/null || true
 
-# ---- 7. Temp / history ------------------------------------------------------
+# ---- 7. Pre-compile Python bytecode for faster startup ----------------------
+python3 -m compileall -q /opt/logfalcon/ 2>/dev/null || true
+
+# ---- 8. Boot speed optimizations -------------------------------------------
+# Disable Bluetooth (unused — saves ~5s)
+if [ -f /boot/firmware/config.txt ]; then
+    grep -q 'dtoverlay=disable-bt' /boot/firmware/config.txt 2>/dev/null || \
+        echo -e '\n# LogFalcon: disable Bluetooth for faster boot\ndtoverlay=disable-bt\ndisable_splash=1\nboot_delay=0' >> /boot/firmware/config.txt
+elif [ -f /boot/config.txt ]; then
+    grep -q 'dtoverlay=disable-bt' /boot/config.txt 2>/dev/null || \
+        echo -e '\n# LogFalcon: disable Bluetooth for faster boot\ndtoverlay=disable-bt\ndisable_splash=1\nboot_delay=0' >> /boot/config.txt
+fi
+
+# Quiet kernel boot (reduces console output, saves ~2-3s)
+for cmdfile in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
+    if [ -f "$cmdfile" ]; then
+        grep -q 'quiet' "$cmdfile" || \
+            sed -i 's/$/ quiet loglevel=3/' "$cmdfile"
+        break
+    fi
+done
+
+# Mask unused services that slow down boot
+systemctl mask triggerhappy.service 2>/dev/null || true
+systemctl mask apt-daily.timer 2>/dev/null || true
+systemctl mask apt-daily-upgrade.timer 2>/dev/null || true
+systemctl mask man-db.timer 2>/dev/null || true
+
+# Disable serial console on BT UART (paired with disable-bt overlay)
+systemctl disable hciuart.service 2>/dev/null || true
+systemctl disable bluetooth.service 2>/dev/null || true
+
+# ---- 9. Temp / history ------------------------------------------------------
 rm -rf /tmp/* /var/tmp/* /root/.bash_history 2>/dev/null || true
 
 echo "=== [logfalcon] Post-cleanup disk usage ==="

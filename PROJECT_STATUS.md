@@ -100,10 +100,10 @@ Both options require leaving the field or spending money on extra hardware. This
 
 ### Current validation status
 
-- automated tests passing: **166 tests**
+- automated tests passing: **170+ tests**
 - lint and formatting checks passing
-- version bumped to **0.2.0**
-- recent hardening completed in web security, docs, and status visibility
+- version bumped to **0.2.1**
+- boot-ready LED signal and boot speed optimizations added
 
 ### Important scope boundary
 
@@ -112,6 +112,29 @@ This project is for **internal SPI flash blackbox** workflows (Betaflight and iN
 It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
+
+## v0.2.1
+
+### Ready LED Signal
+- **New "Ready" LED state**: solid LED on when Pi is booted and waiting for FC — clear transition from blinking heartbeat to solid means "ready to plug in"
+- After sync completes, LED returns to solid "ready" instead of turning off — Pi always shows it's alive
+- New `logfalcon-ready-led.service` manages the ready LED via systemd lifecycle
+- Sync service pauses ready LED during sync and restores it after (ExecStartPre/ExecStopPost)
+- Added `LEDState.READY` to Python LED state machine with solid-on pattern
+
+### Boot Speed Optimizations
+- Disabled Bluetooth overlay (`dtoverlay=disable-bt`) — saves ~5s
+- Disabled splash screen and boot delay in `config.txt`
+- Quiet kernel boot (`quiet loglevel=3`) — reduces console output, saves ~2-3s
+- Masked unused systemd services: triggerhappy, apt-daily timers, man-db
+- Disabled hciuart and bluetooth services
+- Pre-compiled Python bytecode (`compileall`) for faster startup
+- Estimated boot time reduction: ~90s → ~60s
+
+### Tests
+- Added READY state enum and pattern tests
+- Added READY solid-on execution test
+- 170+ tests total
 
 ## v0.2.0
 

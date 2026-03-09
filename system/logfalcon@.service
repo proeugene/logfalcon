@@ -13,6 +13,8 @@ Conflicts=logfalcon@*.service
 
 [Service]
 Type=oneshot
+# Pause ready LED during sync — it will be restored when this service exits
+ExecStartPre=+/usr/bin/systemctl stop logfalcon-ready-led.service
 # Wait for USB enumeration to stabilise
 ExecStartPre=/bin/sleep 3
 
@@ -30,6 +32,9 @@ SyslogIdentifier=logfalcon
 # Resource limits
 TimeoutStartSec=600
 TimeoutStopSec=10
+
+# Restore ready LED after sync completes (success or failure)
+ExecStopPost=+/usr/bin/systemctl start logfalcon-ready-led.service
 
 # Do not restart on failure — the pilot will re-plug the FC
 Restart=no

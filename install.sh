@@ -169,9 +169,13 @@ echo "[6/8] Installing systemd units..."
 cp "$SCRIPT_DIR/system/logfalcon@.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/system/logfalcon-web.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/system/logfalcon-boot-led.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/system/logfalcon-ready-led.service" /etc/systemd/system/
 
 # Boot LED heartbeat script
 install -m 755 "$SCRIPT_DIR/system/logfalcon-boot-led.sh" "$INSTALL_DIR/boot-led.sh"
+
+# Ready LED script
+install -m 755 "$SCRIPT_DIR/system/logfalcon-ready-led.sh" "$INSTALL_DIR/ready-led.sh"
 
 # Firstboot config service
 cp "$SCRIPT_DIR/system/firstboot.sh" "$INSTALL_DIR/firstboot.sh"
@@ -181,6 +185,7 @@ systemctl daemon-reload
 systemctl enable logfalcon-firstboot.service
 systemctl enable logfalcon-web.service
 systemctl enable logfalcon-boot-led.service
+systemctl enable logfalcon-ready-led.service
 systemctl enable hostapd
 systemctl enable dnsmasq
 systemctl enable avahi-daemon
@@ -215,10 +220,8 @@ if [[ $GENERATED_PASSWORD -eq 1 ]]; then
   echo "Keep it somewhere safe before you leave for the field."
   echo ""
 fi
-echo "Startup note: after boot, give the Pi up to 90 seconds to bring up Wi-Fi and the web UI."
-echo "The same SSID/password is mirrored into /boot/firmware/logfalcon-config.txt for later edits."
-echo ""
-echo "To sync logs: plug a Betaflight FC into the Pi's USB OTG port."
+echo "Startup note: after boot, the LED blinks slowly — when it goes solid, the Pi is ready."
+echo "To sync logs: plug a Betaflight or iNav FC into the Pi's USB OTG port."
 echo "To view logs: connect to the '$SSID' Wi-Fi network."
 echo ""
 echo "Check sync service status:  journalctl -u logfalcon@ttyACM0 -f"

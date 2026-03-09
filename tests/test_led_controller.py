@@ -20,7 +20,7 @@ from logfalcon.led.controller import (
 
 class TestLEDStateEnum:
     def test_all_expected_states_exist(self):
-        expected = {'OFF', 'BOOTING', 'BUSY', 'DONE', 'ERROR'}
+        expected = {'OFF', 'BOOTING', 'READY', 'BUSY', 'DONE', 'ERROR'}
         actual = {s.name for s in LEDState}
         assert actual == expected
 
@@ -49,6 +49,11 @@ class TestPatterns:
         steps, repeat = _PATTERNS[LEDState.OFF]
         assert steps == []
         assert repeat is False
+
+    def test_ready_pattern_is_empty_with_repeat(self):
+        steps, repeat = _PATTERNS[LEDState.READY]
+        assert steps == []
+        assert repeat is True
 
     def test_busy_pattern_repeats(self):
         _, repeat = _PATTERNS[LEDState.BUSY]
@@ -218,6 +223,54 @@ class TestGPIOBackend:
 
         ctrl._set_raw(False)
         mock_gpio.output.assert_called_with(17, mock_gpio.LOW)
+
+
+# ---------------------------------------------------------------------------
+# Pattern execution — READY solid on
+# ---------------------------------------------------------------------------
+
+
+class TestReadyPatternExecution:
+    @patch.object(LEDController, '_sysfs_disable_trigger')
+    def test_ready_turns_led_on(self, mock_trigger):
+        """READY pattern should hold the LED solid on."""
+        mock_brightness = MagicMock()
+        with patch('logfalcon.led.controller._SYSFS_BRIGHTNESS', mock_brightness):
+            ctrl = LEDController(backend='sysfs')
+            ctrl.start()
+            ctrl.set_state(LEDState.READY)
+
+            import time
+
+            time.sleep(0.15)
+
+            # Should have written '1' (LED on) — not toggling
+            writes = [c.args[0] for c in mock_brightness.write_text.call_args_list]
+            # Last write should be '1' (solid on)
+            assert writes[-1] == '1'
+            # Should NOT be blinking — all writes after READY should be '1'
+            ready_writes = writes[writes.index('1') :]
+            assert all(w == '1' for w in ready_writes)
+
+            ctrl.stop()
+
+    @patch.object(LEDController, '_sysfs_disable_trigger')
+    def test_off_turns_led_off(self, mock_trigger):
+        """OFF pattern should hold the LED off (contrast with READY)."""
+        mock_brightness = MagicMock()
+        with patch('logfalcon.led.controller._SYSFS_BRIGHTNESS', mock_brightness):
+            ctrl = LEDController(backend='sysfs')
+            ctrl.start()
+            # Default state is OFF — LED should be off
+            import time
+
+            time.sleep(0.1)
+
+            writes = [c.args[0] for c in mock_brightness.write_text.call_args_list]
+            # Should have written '0' (LED off)
+            assert '0' in writes
+
+            ctrl.stop()
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "logfalcon"
-version = "0.2.0"
+version = "0.2.1"
 description = "LogFalcon — Betaflight & iNav blackbox companion tool for field log sync via Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.11"

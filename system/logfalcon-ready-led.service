@@ -1,0 +1,17 @@
+# Solid "ready" LED after boot — pilot knows the Pi is fully operational.
+# Starts after the web server; stopped during sync (resumed via ExecStopPost).
+# Install to: /etc/systemd/system/logfalcon-ready-led.service
+
+[Unit]
+Description=LogFalcon Ready LED
+After=logfalcon-web.service
+Requires=logfalcon-web.service
+Conflicts=logfalcon-boot-led.service
+
+[Service]
+Type=simple
+ExecStart=/opt/logfalcon/ready-led.sh
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

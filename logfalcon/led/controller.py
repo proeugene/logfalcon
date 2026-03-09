@@ -3,7 +3,8 @@
 Runs in a background thread. The main thread sets the desired state via
 `set_state()`; the LED thread executes the corresponding blink pattern.
 
-Field-optimised: three visible patterns that are unmistakable at a glance.
+Field-optimised: four visible patterns that are unmistakable at a glance.
+  READY — solid on (Pi booted, ready for FC)
   BUSY  — fast steady blink (don't unplug)
   DONE  — rapid burst then long solid (safe to unplug)
   ERROR — SOS repeating (something went wrong)
@@ -33,6 +34,7 @@ _SYSFS_TRIGGER = _SYSFS_LED / 'trigger'
 class LEDState(Enum):
     OFF = auto()
     BOOTING = auto()  # slow heartbeat (1 s on / 1 s off) — Pi is starting up
+    READY = auto()  # solid on — Pi booted, ready for FC
     BUSY = auto()  # fast blink (150 ms on / 150 ms off) — sync in progress
     DONE = auto()  # 5× rapid flash then 3 s solid then off — safe to unplug
     ERROR = auto()  # SOS repeating — something went wrong
@@ -41,6 +43,7 @@ class LEDState(Enum):
 _PATTERNS: dict[LEDState, tuple[list[tuple[int, int]], bool]] = {
     LEDState.OFF: ([], False),
     LEDState.BOOTING: ([(1000, 1000)], True),
+    LEDState.READY: ([], True),  # solid on — empty steps + repeat=True
     LEDState.BUSY: ([(150, 150)], True),
     LEDState.DONE: (
         # 5× rapid flash (attention getter) then 3 s solid then off
@@ -130,7 +133,8 @@ class LEDController:
         steps, repeat = _PATTERNS[state]
 
         if not steps:
-            self._set_raw(False)
+            # OFF (repeat=False) → LED off; READY (repeat=True) → LED on
+            self._set_raw(repeat)
             self._idle_event.set()
             self._event.wait()  # wait for state change
             return

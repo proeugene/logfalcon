@@ -330,7 +330,7 @@ def _make_handler(storage_path: str) -> type:
                     self._send_error_response(404)
             except _HTTPError as exc:
                 self._send_error_response(exc.code)
-            except (OSError, ValueError, KeyError) as exc:
+            except (OSError, ValueError, KeyError):
                 log.exception('Unhandled error in %s %s', 'GET', path)
                 self._send_error_response(500)
 
@@ -344,7 +344,7 @@ def _make_handler(storage_path: str) -> type:
                     self._send_error_response(404)
             except _HTTPError as exc:
                 self._send_error_response(exc.code)
-            except (OSError, ValueError, KeyError) as exc:
+            except (OSError, ValueError, KeyError):
                 log.exception('Unhandled error in %s %s', 'DELETE', path)
                 self._send_error_response(500)
 
@@ -357,7 +357,7 @@ def _make_handler(storage_path: str) -> type:
                     self._send_error_response(404)
             except _HTTPError as exc:
                 self._send_error_response(exc.code)
-            except (OSError, ValueError, KeyError) as exc:
+            except (OSError, ValueError, KeyError):
                 log.exception('Unhandled error in %s %s', 'POST', path)
                 self._send_error_response(500)
 

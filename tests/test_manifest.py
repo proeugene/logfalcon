@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 from logfalcon.fc.detector import FCInfo
 from logfalcon.storage.manifest import (
@@ -19,7 +15,6 @@ from logfalcon.storage.manifest import (
     make_session_dir,
     write_manifest,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

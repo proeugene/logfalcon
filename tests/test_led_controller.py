@@ -7,14 +7,11 @@ import threading
 import types
 from unittest.mock import MagicMock, call, patch
 
-import pytest
-
 from logfalcon.led.controller import (
+    _PATTERNS,
     LEDController,
     LEDState,
-    _PATTERNS,
 )
-
 
 # ---------------------------------------------------------------------------
 # LEDState enum
@@ -41,7 +38,7 @@ class TestPatterns:
             assert state in _PATTERNS, f'Missing pattern for {state}'
 
     def test_pattern_entries_are_tuple_pair(self):
-        for state, entry in _PATTERNS.items():
+        for _state, entry in _PATTERNS.items():
             steps, repeat = entry
             assert isinstance(steps, list)
             assert isinstance(repeat, bool)
@@ -198,6 +195,7 @@ class TestGPIOBackend:
         with patch.dict(sys.modules, {'RPi': rpi_pkg, 'RPi.GPIO': fake_module}):
             ctrl = LEDController(backend='gpio', gpio_pin=17)
 
+        assert ctrl is not None
         mock_gpio.setmode.assert_called_once_with(mock_gpio.BCM)
         mock_gpio.setup.assert_called_once_with(17, mock_gpio.OUT, initial=mock_gpio.LOW)
 

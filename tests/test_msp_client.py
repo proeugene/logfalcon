@@ -18,7 +18,6 @@ from logfalcon.msp.constants import (
 from logfalcon.msp.crc import crc8_dvb_s2, crc8_xor
 from logfalcon.msp.framing import MSPFrame, encode_v1
 
-
 # ---------------------------------------------------------------------------
 # Helpers: build raw response bytes that the FrameDecoder will accept
 # ---------------------------------------------------------------------------

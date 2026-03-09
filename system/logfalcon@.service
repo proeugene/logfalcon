@@ -1,4 +1,4 @@
-# systemd template unit for bbsyncer sync service
+# systemd template unit for LogFalcon sync service
 # Install to: /etc/systemd/system/logfalcon@.service
 # Triggered by udev when FC is plugged in (e.g. logfalcon@ttyACM0.service)
 
@@ -20,15 +20,15 @@ User=bbsyncer
 Group=dialout
 
 # Install location
-WorkingDirectory=/opt/bbsyncer
+WorkingDirectory=/opt/logfalcon
 ExecStart=/opt/logfalcon/venv/bin/python -m logfalcon --port /dev/%I
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=bbsyncer
+SyslogIdentifier=logfalcon
 
 # Resource limits
-TimeoutStartSec=300
+TimeoutStartSec=600
 TimeoutStopSec=10
 
 # Do not restart on failure — the pilot will re-plug the FC

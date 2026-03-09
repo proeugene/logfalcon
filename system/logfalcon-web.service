@@ -1,4 +1,4 @@
-# systemd unit for bbsyncer web server (always running)
+# systemd unit for LogFalcon web server (always running)
 # Install to: /etc/systemd/system/logfalcon-web.service
 # Enable: sudo systemctl enable --now logfalcon-web.service
 
@@ -12,7 +12,7 @@ Type=simple
 User=bbsyncer
 Group=bbsyncer
 
-WorkingDirectory=/opt/bbsyncer
+WorkingDirectory=/opt/logfalcon
 ExecStart=/opt/logfalcon/venv/bin/python -m logfalcon --web
 
 StandardOutput=journal

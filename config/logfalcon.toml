@@ -25,3 +25,6 @@ led_gpio_pin = 17
 hotspot_ssid = "BF-Blackbox"
 hotspot_password = "fpvpilot"
 web_port = 80
+
+# Power management
+idle_shutdown_minutes = 0  # 0 = disabled; auto-shutdown after N minutes of no sync activity

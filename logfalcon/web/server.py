@@ -27,6 +27,7 @@ import secrets
 import shutil
 import socketserver
 import subprocess
+import threading
 import time as _time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -994,9 +995,48 @@ def _make_handler(storage_path: str) -> type:
     return _Handler
 
 
+# Timestamp of the last sync activity (updated by the orchestrator via get_status)
+_last_sync_activity = _time.monotonic()
+
+
+def _start_idle_shutdown_timer(idle_minutes: int) -> None:
+    """Background thread that shuts down the Pi after idle_minutes of no sync."""
+    timeout_sec = idle_minutes * 60
+    log.info('Idle auto-shutdown enabled: %d minutes', idle_minutes)
+
+    def _monitor() -> None:
+        global _last_sync_activity  # noqa: PLW0603
+        _last_sync_activity = _time.monotonic()
+        while True:
+            _time.sleep(60)
+            status = get_status()
+            if status.get('state') not in ('idle', ''):
+                # Sync is active — reset the timer
+                _last_sync_activity = _time.monotonic()
+                continue
+            elapsed = _time.monotonic() - _last_sync_activity
+            if elapsed >= timeout_sec:
+                log.warning(
+                    'No sync activity for %d minutes — shutting down', idle_minutes
+                )
+                subprocess.run(  # noqa: S603
+                    ['/usr/bin/sudo', '/sbin/shutdown', '-h', 'now'],
+                    check=False,
+                )
+                return
+
+    t = threading.Thread(target=_monitor, daemon=True, name='idle-shutdown')
+    t.start()
+
+
 def run_server(storage_path: str = '/mnt/logfalcon-logs', port: int = 80) -> None:
     """Start the HTTP server."""
     handler = _make_handler(storage_path)
     server = _ThreadedHTTPServer(('0.0.0.0', port), handler)
     log.info('Starting web server on 0.0.0.0:%d', port)
+
+    cfg = load_config()
+    if cfg.idle_shutdown_minutes > 0:
+        _start_idle_shutdown_timer(cfg.idle_shutdown_minutes)
+
     server.serve_forever()

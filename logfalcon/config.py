@@ -43,6 +43,9 @@ class Config:
     hotspot_ssid: str = 'BF-Blackbox'
     hotspot_password: str = 'fpvpilot'  # noqa: S105
 
+    # Power management
+    idle_shutdown_minutes: int = 0  # 0 = disabled; auto-shutdown after N minutes of no sync
+
 
 def load_config(path: str | None = None) -> Config:
     """Load config from TOML file, falling back to defaults.

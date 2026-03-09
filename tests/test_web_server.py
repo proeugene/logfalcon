@@ -251,3 +251,121 @@ class TestSettingsPage:
         assert '200' in response.split('\r\n')[0]
         assert '"session_count": 1' in response
         assert '"low_space": true' in response
+
+
+class TestStatusEndpoint:
+    def test_status_returns_json(self, tmp_path):
+        with patch(
+            'logfalcon.web.server.get_status',
+            return_value={'state': 'idle', 'progress': 0, 'message': ''},
+        ):
+            response = _make_request_handler(str(tmp_path), 'GET', '/status')
+        assert '200' in response.split('\r\n')[0]
+        assert 'application/json' in response
+        body = response.split('\r\n\r\n', 1)[1]
+        data = json.loads(body)
+        assert 'state' in data
+        assert 'progress' in data
+        assert 'message' in data
+
+
+class TestSSEEndpoint:
+    def test_events_content_type_and_first_event(self, tmp_path):
+        """SSE endpoint returns text/event-stream and sends at least one event."""
+        status_calls = [0]
+
+        def fake_get_status():
+            status_calls[0] += 1
+            if status_calls[0] >= 2:
+                raise BrokenPipeError('simulate disconnect')
+            return {'state': 'idle', 'progress': 0, 'message': ''}
+
+        with patch('logfalcon.web.server.get_status', side_effect=fake_get_status), patch(
+            'logfalcon.web.server._time.sleep', side_effect=BrokenPipeError
+        ):
+            response = _make_request_handler(str(tmp_path), 'GET', '/events')
+        assert 'text/event-stream' in response
+        assert 'data: ' in response
+
+
+class TestDeleteSession:
+    def test_delete_success(self, storage):
+        response = _make_request_handler(
+            str(storage),
+            'DELETE',
+            '/sessions/fc_BTFL_uid-deadbeef/2026-02-26_143012',
+            headers={'X-CSRF-Token': _CSRF_TOKEN},
+        )
+        assert '200' in response.split('\r\n')[0]
+        assert '"deleted": true' in response
+
+    def test_delete_nonexistent_returns_404(self, storage):
+        response = _make_request_handler(
+            str(storage),
+            'DELETE',
+            '/sessions/fc_BTFL_uid-deadbeef/1999-01-01_000000',
+            headers={'X-CSRF-Token': _CSRF_TOKEN},
+        )
+        assert '404' in response.split('\r\n')[0]
+
+    def test_delete_unknown_path_returns_404(self, storage):
+        response = _make_request_handler(
+            str(storage),
+            'DELETE',
+            '/unknown',
+            headers={'X-CSRF-Token': _CSRF_TOKEN},
+        )
+        assert '404' in response.split('\r\n')[0]
+
+
+class TestErrorResponses:
+    def test_404_returns_html(self, tmp_path):
+        response = _make_request_handler(str(tmp_path), 'GET', '/nonexistent')
+        assert '404' in response.split('\r\n')[0]
+        assert 'text/html' in response
+        assert '<h1>404</h1>' in response
+
+    def test_post_unknown_path_returns_404(self, tmp_path):
+        response = _make_request_handler(str(tmp_path), 'POST', '/unknown')
+        assert '404' in response.split('\r\n')[0]
+        assert 'text/html' in response
+
+
+class TestRangeRequests:
+    def test_valid_range_returns_206(self, storage):
+        response = _make_request_handler(
+            str(storage),
+            'GET',
+            '/download/fc_BTFL_uid-deadbeef/2026-02-26_143012/raw_flash.bbl',
+            headers={'Range': 'bytes=0-99'},
+        )
+        assert '206' in response.split('\r\n')[0]
+        assert 'Content-Range' in response
+        assert 'bytes 0-99/1024' in response
+
+    def test_malformed_range_falls_through_to_200(self, storage):
+        response = _make_request_handler(
+            str(storage),
+            'GET',
+            '/download/fc_BTFL_uid-deadbeef/2026-02-26_143012/raw_flash.bbl',
+            headers={'Range': 'bytes=abc-def'},
+        )
+        assert '200' in response.split('\r\n')[0]
+
+    def test_start_beyond_file_size_returns_416(self, storage):
+        response = _make_request_handler(
+            str(storage),
+            'GET',
+            '/download/fc_BTFL_uid-deadbeef/2026-02-26_143012/raw_flash.bbl',
+            headers={'Range': 'bytes=9999-'},
+        )
+        assert '416' in response.split('\r\n')[0]
+
+    def test_inverted_range_returns_416(self, storage):
+        response = _make_request_handler(
+            str(storage),
+            'GET',
+            '/download/fc_BTFL_uid-deadbeef/2026-02-26_143012/raw_flash.bbl',
+            headers={'Range': 'bytes=500-100'},
+        )
+        assert '416' in response.split('\r\n')[0]

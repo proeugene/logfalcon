@@ -115,7 +115,7 @@ It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
 
-## v0.3.2 — Performance Optimization
+## v0.3.4 — Performance Optimization
 
 ### MSP v2 flash reads & high-speed serial
 - **MSP v2 for flash reads**: 16-bit length field enables ~4 KB responses instead of 255 B with v1 (~16× per-frame throughput)
@@ -125,7 +125,7 @@ It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 - **Config updated**: sample `logfalcon.toml` defaults now match code (baud=921600, chunk=4096)
 
 ### Estimated sync times (16 MB flash)
-| Connection | Before (v0.3.1) | After (v0.3.2) |
+| Connection | Before (v0.3.1) | After (v0.3.4) |
 |---|---|---|
 | UART | ~20 min | ~2.5 min |
 | USB | ~5–9 min | ~30–60 sec |

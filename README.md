@@ -85,6 +85,29 @@ Put the SD card in your Pi Zero W, power it with a USB battery bank. Wait ~90 se
 
 ---
 
+## 🔧 Install on Existing Pi
+
+Already running Raspberry Pi OS on your Pi Zero W? Install LogFalcon with one command:
+
+```bash
+curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/install.sh | sudo bash
+```
+
+This automatically:
+- Downloads the correct ARM binary from GitHub Releases
+- Installs hostapd, dnsmasq, avahi-daemon
+- Sets up Wi-Fi hotspot, systemd services, udev auto-trigger
+- Configures LED feedback and boot optimizations
+
+To uninstall:
+```bash
+curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/uninstall.sh | sudo bash
+```
+
+> 💡 You can also set a specific version: `LOGFALCON_VERSION=v0.3.4 curl -sSL ... | sudo bash`
+
+---
+
 ## 🛒 What You Need
 
 | Part | Notes |
@@ -258,10 +281,11 @@ git clone https://github.com/proeugene/logfalcon
 cd logfalcon
 make build-pi            # ARM6 for Pi Zero W
 # or: make build-pi2     # ARM64 for Pi Zero 2 W
-sudo bash install.sh --ssid "LogFalcon" --password "your-password"
+scp bin/logfalcon-arm6 pi@logfalcon.local:/tmp/
+ssh pi@logfalcon.local 'sudo install -m 755 /tmp/logfalcon-arm6 /opt/logfalcon/logfalcon && sudo systemctl restart logfalcon-web'
 ```
 
-This installs to `/opt/logfalcon/`, sets up hostapd, dnsmasq, captive portal, mDNS (`logfalcon.local`), systemd services, and the udev auto-trigger rule.
+Or use the install script for a fresh setup: `sudo bash scripts/install.sh`
 
 ### Development Setup
 
@@ -271,7 +295,7 @@ cd logfalcon
 go mod download
 ```
 
-Requires Go 1.22+.
+Requires Go 1.23+.
 
 ### Commands
 

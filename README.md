@@ -1,6 +1,6 @@
 # LogFalcon
 
-[![CI](https://github.com/proeugene/logfalcon/actions/workflows/ci.yml/badge.svg)](https://github.com/proeugene/logfalcon/actions/workflows/ci.yml)
+[![CI](https://github.com/proeugene/logfalcon/actions/workflows/go-ci.yml/badge.svg)](https://github.com/proeugene/logfalcon/actions/workflows/go-ci.yml)
 
 **Clear your FC's blackbox flash in the field. No laptop. No dongles. Keep flying.**
 
@@ -256,6 +256,8 @@ For contributors or manual Pi OS installs:
 ```bash
 git clone https://github.com/proeugene/logfalcon
 cd logfalcon
+make build-pi            # ARM6 for Pi Zero W
+# or: make build-pi2     # ARM64 for Pi Zero 2 W
 sudo bash install.sh --ssid "LogFalcon" --password "your-password"
 ```
 
@@ -266,29 +268,31 @@ This installs to `/opt/logfalcon/`, sets up hostapd, dnsmasq, captive portal, mD
 ```bash
 git clone https://github.com/proeugene/logfalcon
 cd logfalcon
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+go mod download
 ```
+
+Requires Go 1.22+.
 
 ### Commands
 
 ```bash
-pytest                                           # Run tests
-pytest --cov=logfalcon --cov-report=term-missing  # With coverage
-ruff check && ruff format --check                 # Linting
-bandit -r logfalcon/ -c pyproject.toml            # Security scan
+make test                   # Run tests with race detector
+make lint                   # Run golangci-lint
+make build                  # Build native binary
+make build-pi               # Cross-compile for Pi Zero W (ARM6)
+make build-pi2              # Cross-compile for Pi Zero 2 W (ARM64)
 ```
 
-Tests run entirely without hardware — MSP clients are mocked.
+Tests run entirely without hardware — serial ports, GPIO, and filesystem are mocked via interfaces.
 
 ### CLI Usage
 
 ```bash
-python -m logfalcon                              # Sync (auto-detect port)
-python -m logfalcon --port /dev/ttyACM0          # Specific port
-python -m logfalcon --port /dev/ttyACM0 --dry-run # Copy only, don't erase
-python -m logfalcon --web                        # Web server only
-python -m logfalcon --port /dev/ttyACM0 --verbose # Verbose logging
+logfalcon                                         # Sync (auto-detect port)
+logfalcon --port /dev/ttyACM0                     # Specific port
+logfalcon --port /dev/ttyACM0 --dry-run           # Copy only, don't erase
+logfalcon --web                                   # Web server only
+logfalcon --version                               # Show version
 ```
 
 ### Testing the Web UI Locally
@@ -299,14 +303,9 @@ echo '{"version":1,"created_utc":"2026-02-26T14:30:12Z","fc":{"variant":"BTFL","
   > /tmp/logfalcon-test/fc_BTFL_uid-deadbeef/2026-02-26_143012/manifest.json
 touch /tmp/logfalcon-test/fc_BTFL_uid-deadbeef/2026-02-26_143012/raw_flash.bbl
 
-# iNav example session
-mkdir -p /tmp/logfalcon-test/fc_INAV_uid-aabb1122/2026-03-02_101500
-echo '{"version":1,"created_utc":"2026-03-02T10:15:00Z","fc":{"variant":"INAV","uid":"aabb112233445566","api_version":"2.6","blackbox_device":3},"file":{"name":"raw_flash.bbl","bytes":4194304,"sha256":"def456"},"erase_attempted":true,"erase_completed":true}' \
-  > /tmp/logfalcon-test/fc_INAV_uid-aabb1122/2026-03-02_101500/manifest.json
-touch /tmp/logfalcon-test/fc_INAV_uid-aabb1122/2026-03-02_101500/raw_flash.bbl
-
-python -c "from logfalcon.web.server import run_server; run_server(storage_path='/tmp/logfalcon-test', port=8080)"
-# Open http://localhost:8080
+./bin/logfalcon --web --config /dev/null
+# Then set storage_path in config or use default
+# Open http://localhost:80
 ```
 
 ### Building the SD Card Image
@@ -322,15 +321,16 @@ Takes 30–60 min on first run. Output: `pi-gen/pi-gen-repo/deploy/`. CI builds 
 ### Architecture
 
 ```
-logfalcon/
-├── msp/         MSP protocol: framing, CRC, Huffman, client
-├── fc/          Flight controller detection and handshake
-├── sync/        10-step sync orchestrator (state machine)
-├── storage/     Session directories, manifest.json, file writer
-├── web/         stdlib HTTP server, captive portal, file downloads
-├── led/         LED state machine (sysfs + GPIO backends)
-├── util/        Disk space utilities
-└── _native/     Optional C extension for CRC/framing/Huffman
+cmd/logfalcon/       CLI entry point, flag parsing
+internal/
+├── config/          TOML config loader with search paths
+├── msp/             MSP protocol: framing (14-state decoder), CRC, Huffman, client
+├── fc/              Flight controller detection and handshake
+├── sync/            10-step sync orchestrator (state machine)
+├── storage/         Session directories, manifest.json, stream writer
+├── web/             stdlib HTTP server, SSE, captive portal, file downloads
+├── led/             LED state machine (6 states, sysfs + GPIO backends)
+└── util/            Disk space utilities
 ```
 
 ### How the Sync Works
@@ -356,10 +356,10 @@ The Pi speaks **MSP v1** over USB CDC-ACM. A udev rule detects the FC (STM VID `
 ## Contributing
 
 1. Fork → feature branch → make changes → add tests
-2. Run `ruff check && ruff format --check && pytest`
+2. Run `make lint && make test`
 3. Open a Pull Request against `main`
 
-CI checks linting, tests (Python 3.11–3.13), and Bandit security scanning automatically.
+CI checks linting, tests (with race detector), and multi-arch builds automatically.
 
 ---
 

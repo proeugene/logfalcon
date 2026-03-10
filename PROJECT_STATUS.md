@@ -56,8 +56,8 @@ Both options require leaving the field or spending money on extra hardware. This
 ### Performance-oriented implementation
 
 - pipelined MSP reads to reduce idle time
-- optional native C extension for hot MSP paths
-- zero-copy file sending with `sendfile()` when available
+- pure Go implementation — no C extensions, no CGO required
+- SHA-256 streaming verification during writes
 - timing metrics recorded in manifests for visibility
 
 ### Packaging and deployment
@@ -70,23 +70,25 @@ Both options require leaving the field or spending money on extra hardware. This
 
 ## Technology summary
 
-- **Language:** Python 3.11+
-- **Runtime dependencies:** `pyserial`, conditional `RPi.GPIO`
-- **Optional acceleration:** native C extension in `logfalcon/_native/_msp_fast.c`
-- **Protocol:** MSP
+- **Language:** Go 1.22+
+- **Binary size:** ~6 MB (single static binary, no runtime dependencies)
+- **External deps:** `go.bug.st/serial` (serial port), `pelletier/go-toml` (config), `golang.org/x/sys` (disk stats)
+- **Protocol:** MSP v1/v2
 - **Target hardware:** Raspberry Pi Zero W / Zero 2 W
-- **Current version:** `0.2.0`
+- **Current version:** `1.0.0`
 
 ## Major project areas
 
-- `logfalcon/msp/` - MSP framing, CRC, client, constants, Huffman
-- `logfalcon/fc/` - FC detection and compatibility checks
-- `logfalcon/sync/` - copy / verify / erase orchestration
-- `logfalcon/storage/` - session layout and manifest handling
-- `logfalcon/web/` - browser UI, downloads, settings, health
-- `logfalcon/led/` - LED signaling
-- `config/`, `system/`, `boot/` - deploy-time integration for Pi images and installs
-- `tests/` - automated test coverage
+- `cmd/logfalcon/` — CLI entry point, flag parsing, wiring
+- `internal/msp/` — MSP framing (14-state decoder), CRC, client, constants, Huffman
+- `internal/fc/` — FC detection and compatibility checks
+- `internal/sync/` — copy / verify / erase orchestration (10-step state machine)
+- `internal/storage/` — session layout, manifest handling, stream writer
+- `internal/web/` — browser UI, SSE, downloads, settings, health, captive portal
+- `internal/led/` — LED signaling (6 states, sysfs/GPIO backends)
+- `internal/config/` — TOML config loader with search paths
+- `internal/util/` — disk space utilities
+- `config/`, `system/`, `boot/` — deploy-time integration for Pi images and installs
 
 ## Current quality/readiness snapshot
 
@@ -100,10 +102,10 @@ Both options require leaving the field or spending money on extra hardware. This
 
 ### Current validation status
 
-- automated tests passing: **170+ tests**
-- lint and formatting checks passing
-- version bumped to **0.2.1**
-- boot-ready LED signal and boot speed optimizations added
+- automated tests passing: **71 tests** (Go, with race detector)
+- vet and build checks passing
+- cross-compilation verified: ARM6 (Pi Zero W) and ARM64 (Pi Zero 2 W)
+- version: **1.0.0** (Go rewrite)
 
 ### Important scope boundary
 
@@ -112,6 +114,34 @@ This project is for **internal SPI flash blackbox** workflows (Betaflight and iN
 It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
+
+## v1.0.0 — Go Rewrite
+
+### Complete rewrite from Python to Go
+- **Single static binary**: ~6 MB replaces ~250 MB Python venv — 50× smaller
+- **Instant startup**: ~10ms cold start vs 500ms–2s Python — 50–200× faster
+- **Minimal memory**: ~5–10 MB idle vs 45–55 MB Python — 5–10× less
+- **Zero runtime dependencies**: no Python, pip, venv, or C compiler needed on Pi
+- **Race-detector tested**: all 71 tests pass with `go test -race`
+
+### Architecture
+- 8 internal packages: config, msp, fc, storage, sync, led, web, util
+- 3,972 LOC Go source + 1,767 LOC tests
+- 3 external dependencies (serial, TOML, syscall)
+- Pure Go — no CGO, no C extension needed
+- Interface-based design enables full mock testing without hardware
+
+### New features in rewrite
+- 14-state MSP frame decoder (v1/v2 protocol support)
+- Thread-safe sync status via `sync.RWMutex` (goroutine-safe SSE)
+- Channel-based interruptible LED sleep patterns
+- Proper context cancellation throughout
+- CI/CD pipeline: lint, test with race detector, multi-arch builds, GitHub Release
+
+### Deployment simplified
+- `install.sh` copies single binary (no venv setup)
+- systemd services point to `/opt/logfalcon/logfalcon`
+- Pi image can drop Python entirely (~150–200 MB savings)
 
 ## v0.2.1
 

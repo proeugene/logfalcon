@@ -1,7 +1,7 @@
 package led
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -301,13 +301,13 @@ type gpioBackend struct {
 }
 
 func (b *gpioBackend) Set(on bool) {
-	log.Printf("gpio: pin %d set %v (placeholder)", b.pin, on)
+	slog.Debug("gpio: set pin", "pin", b.pin, "on", on)
 }
 
 func (b *gpioBackend) DisableTrigger() {
-	log.Printf("gpio: disable trigger (placeholder)")
+	slog.Debug("gpio: disable trigger")
 }
 
 func (b *gpioBackend) RestoreTrigger() {
-	log.Printf("gpio: restore trigger (placeholder)")
+	slog.Debug("gpio: restore trigger")
 }

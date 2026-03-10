@@ -3,7 +3,7 @@ package fc
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/proeugene/logfalcon/internal/msp"
 )
@@ -70,14 +70,14 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	if err != nil {
 		return nil, &DetectionError{Message: fmt.Sprintf("MSP API_VERSION failed: %v", err)}
 	}
-	log.Printf("MSP API version: %d.%d", major, minor)
+	slog.Info("MSP API version", "major", major, "minor", minor)
 
 	// 2. FC variant
 	variant, err := client.GetFCVariant()
 	if err != nil {
 		return nil, &DetectionError{Message: fmt.Sprintf("MSP FC_VARIANT failed: %v", err)}
 	}
-	log.Printf("FC variant: %q", variant)
+	slog.Info("FC variant", "variant", variant)
 
 	if len(variant) > 4 {
 		variant = variant[:4]
@@ -90,9 +90,9 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	uid := "unknown"
 	if u, err := client.GetUID(); err == nil {
 		uid = u
-		log.Printf("FC UID: %s", uid)
+		slog.Info("FC UID", "uid", uid)
 	} else {
-		log.Printf("Could not read FC UID, using 'unknown'")
+		slog.Warn("could not read FC UID, using 'unknown'")
 	}
 
 	// 4. Blackbox config
@@ -100,16 +100,16 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	if variant == msp.BTFLVariant {
 		deviceType, err := client.GetBlackboxConfig()
 		if err != nil {
-			log.Printf("Could not read BLACKBOX_CONFIG: %v", err)
+			slog.Warn("could not read BLACKBOX_CONFIG", "error", err)
 		} else {
 			bbDevice = deviceType
-			log.Printf("Blackbox device type: %d", bbDevice)
+			slog.Info("blackbox device type", "device", bbDevice)
 		}
 	} else {
 		// iNav deprecated MSP_BLACKBOX_CONFIG — assume flash until
 		// DATAFLASH_SUMMARY proves otherwise.
 		bbDevice = msp.BlackboxDeviceFlash
-		log.Printf("Non-Betaflight FC — skipping BLACKBOX_CONFIG, assuming flash")
+		slog.Info("non-Betaflight FC — skipping BLACKBOX_CONFIG, assuming flash")
 	}
 
 	// 5. SD card → error

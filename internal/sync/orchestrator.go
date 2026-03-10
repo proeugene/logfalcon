@@ -16,7 +16,7 @@ package sync
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -92,7 +92,7 @@ type Orchestrator struct {
 func (o *Orchestrator) Run(portPath string) SyncResult {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("Panic during sync: %v", r)
+			slog.Error("panic during sync", "error", r)
 			o.LED.SetState(led.Error)
 			SetStatus("error", 0, "Unexpected sync error. Check the service log for details.")
 		}
@@ -100,7 +100,7 @@ func (o *Orchestrator) Run(portPath string) SyncResult {
 
 	result, err := o.run(portPath)
 	if err != nil {
-		log.Printf("Sync error: %v", err)
+		slog.Error("sync error", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Unexpected sync error. Check the service log for details.")
 		return ResultError
@@ -114,7 +114,7 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	timings := make(map[string]float64)
 
 	// --- Step 1: Open serial port ---
-	log.Printf("Step 1: Opening serial port %s at %d baud", portPath, cfg.SerialBaud)
+	slog.Info("step 1: opening serial port", "port", portPath, "baud", cfg.SerialBaud)
 	port, err := goSerial.Open(portPath, &goSerial.Mode{
 		BaudRate: cfg.SerialBaud,
 		DataBits: 8,
@@ -133,7 +133,7 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	defer client.Close()
 
 	// --- Step 2: Identify FC ---
-	log.Printf("Step 2: Identifying FC on %s", portPath)
+	slog.Info("step 2: identifying FC", "port", portPath)
 	SetStatus("identifying", 0, "Checking the flight controller over MSP.")
 	identifyStarted := time.Now()
 
@@ -144,7 +144,7 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	timings["identify_sec"] = secondsSince(identifyStarted)
 
 	// --- Step 3: Query flash state ---
-	log.Printf("Step 3: Querying flash state")
+	slog.Info("step 3: querying flash state")
 	SetStatus("querying", 0, "Reading blackbox flash usage from the FC.")
 	queryStarted := time.Now()
 
@@ -155,14 +155,14 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	timings["query_sec"] = secondsSince(queryStarted)
 
 	// --- Step 4: Check Pi storage ---
-	log.Printf("Step 4: Checking Pi storage")
+	slog.Info("step 4: checking Pi storage")
 	sessionDir, writer, result := o.checkStorageAndPrepare(fcInfo, usedSize)
 	if result != nil {
 		return *result, nil
 	}
 
 	// --- Step 6: Stream flash read ---
-	log.Printf("Step 6: Reading %d bytes from flash → %s", usedSize, sessionDir)
+	slog.Info("step 6: reading flash", "bytes", usedSize, "dir", sessionDir)
 	o.LED.SetState(led.Busy)
 	SetStatus("syncing", 0, "Copying blackbox flash to the Pi SD card.")
 	streamStarted := time.Now()
@@ -174,7 +174,7 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	timings["stream_sec"] = secondsSince(streamStarted)
 
 	// --- Step 7: Verify integrity ---
-	log.Printf("Step 7: Verifying integrity")
+	slog.Info("step 7: verifying integrity")
 	o.LED.SetState(led.Busy)
 	SetStatus("verifying", 0, "Verifying the copied file before erase.")
 	verifyStarted := time.Now()
@@ -186,33 +186,33 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	timings["verify_sec"] = secondsSince(verifyStarted)
 
 	// --- Step 8: Write manifest ---
-	log.Printf("Step 8: Writing manifest")
+	slog.Info("step 8: writing manifest")
 	timings["total_sec"] = secondsSince(totalStarted)
 	storageInfo := fcInfoToStorage(fcInfo)
 	if err := storage.WriteManifest(sessionDir, storageInfo, fileSHA256, int64(usedSize),
 		false, false, timings); err != nil {
-		log.Printf("Failed to write manifest: %v", err)
+		slog.Warn("failed to write manifest", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Failed to write the session manifest.")
 		return ResultError, nil
 	}
 
 	if o.DryRun {
-		log.Printf("DRY RUN — skipping erase")
+		slog.Info("DRY RUN — skipping erase")
 		o.LED.SetState(led.Done)
 		SetStatus("idle", 0, "Copy complete. Dry run kept the FC flash untouched.")
 		return ResultDryRun, nil
 	}
 
 	if !cfg.EraseAfterSync {
-		log.Printf("erase_after_sync=false — skipping erase")
+		slog.Info("erase_after_sync=false — skipping erase")
 		o.LED.SetState(led.Done)
 		SetStatus("idle", 0, "Copy complete. Erase was skipped by configuration.")
 		return ResultSuccess, nil
 	}
 
 	// --- Step 9: Erase FC flash ---
-	log.Printf("Step 9: Erasing FC flash")
+	slog.Info("step 9: erasing FC flash")
 	o.LED.SetState(led.Busy)
 	SetStatus("erasing", 0, "Erasing the FC flash now that the copy is verified.")
 	eraseStarted := time.Now()
@@ -223,15 +223,15 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	_ = storage.UpdateManifestErase(sessionDir, eraseOK, timings)
 
 	if !eraseOK {
-		log.Printf("Flash erase did not complete within timeout")
+		slog.Warn("flash erase did not complete within timeout")
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Copy succeeded, but erase did not finish before timeout.")
 		return ResultError, nil
 	}
-	log.Printf("Flash erase confirmed")
+	slog.Info("flash erase confirmed")
 
 	// --- Step 10: Signal result ---
-	log.Printf("Step 10: Sync complete — SUCCESS")
+	slog.Info("step 10: sync complete")
 	o.LED.SetState(led.Done)
 	SetStatus("idle", 0, "Sync complete — safe to unplug and fly again.")
 	return ResultSuccess, nil
@@ -242,7 +242,7 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 func (o *Orchestrator) identifyFC(client *msp.Client) (*fc.FCInfo, *SyncResult) {
 	fcInfo, err := fc.Detect(client)
 	if err != nil {
-		log.Printf("FC detection failed: %v", err)
+		slog.Error("FC detection failed", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, err.Error())
 		r := ResultError
@@ -257,7 +257,7 @@ func (o *Orchestrator) identifyFC(client *msp.Client) (*fc.FCInfo, *SyncResult) 
 	}
 	client.FCVariant = variant
 
-	log.Printf("FC identified: variant=%q uid=%s", fcInfo.Variant, fcInfo.UID)
+	slog.Info("FC identified", "variant", fcInfo.Variant, "uid", fcInfo.UID)
 	return fcInfo, nil
 }
 
@@ -266,18 +266,18 @@ func (o *Orchestrator) identifyFC(client *msp.Client) (*fc.FCInfo, *SyncResult) 
 func (o *Orchestrator) queryFlashState(client *msp.Client) (uint32, *SyncResult) {
 	summary, err := client.GetDataflashSummary()
 	if err != nil {
-		log.Printf("Failed to get flash summary: %v", err)
+		slog.Error("failed to get flash summary", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Could not read the FC flash summary.")
 		r := ResultError
 		return 0, &r
 	}
 
-	log.Printf("Flash: supported=%t ready=%t used=%d total=%d",
-		summary.Supported, summary.Ready, summary.UsedSize, summary.TotalSize)
+	slog.Info("flash summary",
+		"supported", summary.Supported, "ready", summary.Ready, "used", summary.UsedSize, "total", summary.TotalSize)
 
 	if !summary.Supported {
-		log.Printf("FC flash not supported")
+		slog.Warn("FC flash not supported")
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "This FC does not expose supported flash storage.")
 		r := ResultError
@@ -285,7 +285,7 @@ func (o *Orchestrator) queryFlashState(client *msp.Client) (uint32, *SyncResult)
 	}
 
 	if !summary.Ready {
-		log.Printf("FC flash not ready (may be busy)")
+		slog.Warn("FC flash not ready")
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "The FC flash is busy right now. Try again in a moment.")
 		r := ResultError
@@ -293,7 +293,7 @@ func (o *Orchestrator) queryFlashState(client *msp.Client) (uint32, *SyncResult)
 	}
 
 	if summary.UsedSize == 0 {
-		log.Printf("Flash is empty — nothing to sync")
+		slog.Info("flash is empty — nothing to sync")
 		o.LED.SetState(led.Done)
 		SetStatus("idle", 0, "Flash already empty — nothing to sync.")
 		r := ResultAlreadyEmpty
@@ -309,7 +309,7 @@ func (o *Orchestrator) checkStorageAndPrepare(fcInfo *fc.FCInfo, usedSize uint32
 	cfg := o.Config
 	storagePath := cfg.StoragePath
 	if err := os.MkdirAll(storagePath, 0o755); err != nil {
-		log.Printf("Failed to create storage dir: %v", err)
+		slog.Error("failed to create storage dir", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Could not create the storage directory.")
 		r := ResultError
@@ -319,13 +319,13 @@ func (o *Orchestrator) checkStorageAndPrepare(fcInfo *fc.FCInfo, usedSize uint32
 	requiredMB := float64(usedSize)/(1024*1024) + float64(cfg.MinFreeSpaceMB)
 	availableMB, err := util.FreeMB(storagePath)
 	if err != nil {
-		log.Printf("Failed to check free space: %v", err)
+		slog.Error("failed to check free space", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Could not check available storage space.")
 		r := ResultError
 		return "", nil, &r
 	}
-	log.Printf("Storage: required=%.1f MB available=%.1f MB", requiredMB, availableMB)
+	slog.Info("storage check", "requiredMB", requiredMB, "availableMB", availableMB)
 
 	if availableMB < requiredMB {
 		if cfg.StoragePressureCleanup {
@@ -333,17 +333,17 @@ func (o *Orchestrator) checkStorageAndPrepare(fcInfo *fc.FCInfo, usedSize uint32
 			requiredBytes := int64(requiredMB * 1024 * 1024)
 			deleted, cleanErr := storage.CleanupOldestSessions(storagePath, requiredBytes)
 			if cleanErr != nil {
-				log.Printf("Cleanup error: %v", cleanErr)
+				slog.Warn("storage cleanup error", "error", cleanErr)
 			}
 			if len(deleted) > 0 {
-				log.Printf("Reclaimed storage by deleting %d old session(s)", len(deleted))
+				slog.Info("reclaimed storage", "deleted_sessions", len(deleted))
 			}
 			availableMB, _ = util.FreeMB(storagePath)
-			log.Printf("Storage after cleanup: available=%.1f MB", availableMB)
+			slog.Info("storage after cleanup", "availableMB", availableMB)
 		}
 		if availableMB < requiredMB {
-			log.Printf("Insufficient Pi storage: %.1f MB available, %.1f MB required",
-				availableMB, requiredMB)
+			slog.Error("insufficient Pi storage",
+				"availableMB", availableMB, "requiredMB", requiredMB)
 			o.LED.SetState(led.Error)
 			SetStatus("error", 0, "Not enough free space on the Pi SD card to copy this log safely.")
 			r := ResultError
@@ -352,11 +352,11 @@ func (o *Orchestrator) checkStorageAndPrepare(fcInfo *fc.FCInfo, usedSize uint32
 	}
 
 	// --- Step 5: Prepare output ---
-	log.Printf("Step 5: Preparing output directory")
+	slog.Info("step 5: preparing output directory")
 	storageInfo := fcInfoToStorage(fcInfo)
 	sessionDir, err := storage.MakeSessionDir(storagePath, storageInfo)
 	if err != nil {
-		log.Printf("Failed to create session dir: %v", err)
+		slog.Error("failed to create session dir", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Could not create the output directory.")
 		r := ResultError
@@ -366,7 +366,7 @@ func (o *Orchestrator) checkStorageAndPrepare(fcInfo *fc.FCInfo, usedSize uint32
 	bblPath := filepath.Join(sessionDir, storage.RawFlashFilename)
 	writer, err := storage.NewStreamWriter(bblPath)
 	if err != nil {
-		log.Printf("Failed to create stream writer: %v", err)
+		slog.Error("failed to create stream writer", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Could not open the output file for writing.")
 		r := ResultError
@@ -386,7 +386,7 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("Panic during flash read: %v", r)
+			slog.Error("panic during flash read", "error", r)
 			_ = writer.Abort()
 			o.LED.SetState(led.Error)
 			SetStatus("error", 0, "Unexpected error while copying flash data.")
@@ -399,7 +399,7 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 		firstChunkSize = uint16(remaining)
 	}
 	if err := client.SendFlashReadRequest(address, firstChunkSize, compression); err != nil {
-		log.Printf("Failed to send initial flash read request: %v", err)
+		slog.Error("failed to send initial flash read request", "error", err)
 		_ = writer.Abort()
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Could not start reading flash data from the FC.")
@@ -411,10 +411,10 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 		chunkAddr, data, err := client.ReceiveFlashReadResponse()
 		if err != nil {
 			consecutiveErrors++
-			log.Printf("Flash read error at 0x%08x (attempt %d/%d): %v",
-				address, consecutiveErrors, maxConsecutiveErrors, err)
+			slog.Warn("flash read error", "address", fmt.Sprintf("0x%08x", address),
+				"attempt", consecutiveErrors, "maxAttempts", maxConsecutiveErrors, "error", err)
 			if consecutiveErrors >= maxConsecutiveErrors {
-				log.Printf("Too many consecutive read errors — aborting")
+				slog.Error("too many consecutive read errors — aborting")
 				_ = writer.Abort()
 				o.LED.SetState(led.Error)
 				SetStatus("error", 0, "Too many FC read errors. Try another USB cable and sync again.")
@@ -432,10 +432,10 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 		}
 
 		if chunkAddr != address {
-			log.Printf("Address mismatch: expected 0x%08x got 0x%08x — retrying", address, chunkAddr)
+			slog.Warn("address mismatch — retrying", "expected", fmt.Sprintf("0x%08x", address), "got", fmt.Sprintf("0x%08x", chunkAddr))
 			consecutiveErrors++
 			if consecutiveErrors >= maxConsecutiveErrors {
-				log.Printf("Too many address mismatches — aborting")
+				slog.Error("too many address mismatches — aborting")
 				_ = writer.Abort()
 				o.LED.SetState(led.Error)
 				SetStatus("error", 0, "The FC returned inconsistent data. Reconnect and try again.")
@@ -451,7 +451,7 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 		}
 
 		if len(data) == 0 {
-			log.Printf("FC returned 0 bytes at 0x%08x — end of data", address)
+			slog.Info("FC returned 0 bytes — end of data", "address", fmt.Sprintf("0x%08x", address))
 			break
 		}
 
@@ -468,7 +468,7 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 		}
 
 		if _, err := writer.Write(data); err != nil {
-			log.Printf("Failed to write flash data: %v", err)
+			slog.Error("failed to write flash data", "error", err)
 			_ = writer.Abort()
 			o.LED.SetState(led.Error)
 			SetStatus("error", 0, "Failed to write data to the output file.")
@@ -480,26 +480,27 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 		progress := int(address * 100 / usedSize)
 		SetStatus("syncing", progress, "Copying blackbox flash to the Pi SD card.")
 		if address%(uint32(chunkSize)*64) < uint32(chunkSize) {
-			log.Printf("Read 0x%08x / 0x%08x (%d%%)", address, usedSize, progress)
+			slog.Debug("flash read progress", "address", fmt.Sprintf("0x%08x", address),
+				"total", fmt.Sprintf("0x%08x", usedSize), "percent", progress)
 		}
 	}
 
 	if err := writer.Close(); err != nil {
-		log.Printf("Failed to close writer: %v", err)
+		slog.Error("failed to close writer", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Failed to finalize the output file.")
 		r := ResultError
 		return &r
 	}
 
-	log.Printf("Flash read complete: %d bytes written", writer.BytesWritten())
+	slog.Info("flash read complete", "bytes_written", writer.BytesWritten())
 	return nil
 }
 
 // verifyIntegrity checks file size and SHA-256 (Step 7).
 func (o *Orchestrator) verifyIntegrity(writer *storage.StreamWriter, usedSize uint32) (string, *SyncResult) {
 	if writer.BytesWritten() != int64(usedSize) {
-		log.Printf("Size mismatch: wrote %d bytes, expected %d", writer.BytesWritten(), usedSize)
+		slog.Warn("size mismatch", "written", writer.BytesWritten(), "expected", usedSize)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "The copied file size did not match the FC flash size.")
 		r := ResultError
@@ -508,28 +509,28 @@ func (o *Orchestrator) verifyIntegrity(writer *storage.StreamWriter, usedSize ui
 
 	match, fileSHA256, err := writer.VerifyAgainstFile()
 	if err != nil {
-		log.Printf("SHA-256 verification error: %v", err)
+		slog.Error("SHA-256 verification error", "error", err)
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Could not verify the copied file integrity.")
 		r := ResultError
 		return "", &r
 	}
 	if !match {
-		log.Printf("SHA-256 verification failed — NOT erasing FC flash")
+		slog.Error("SHA-256 verification failed — NOT erasing FC flash")
 		o.LED.SetState(led.Error)
 		SetStatus("error", 0, "Verification failed, so the FC flash was left untouched.")
 		r := ResultError
 		return "", &r
 	}
 
-	log.Printf("Integrity OK — SHA-256: %s", fileSHA256)
+	slog.Info("integrity OK", "sha256", fileSHA256)
 	return fileSHA256, nil
 }
 
 // waitForErase sends the erase command and polls until flash is empty or timeout.
 func (o *Orchestrator) waitForErase(client *msp.Client) bool {
 	if err := client.EraseFlash(); err != nil {
-		log.Printf("Failed to send erase command: %v", err)
+		slog.Error("failed to send erase command", "error", err)
 		return false
 	}
 
@@ -538,10 +539,10 @@ func (o *Orchestrator) waitForErase(client *msp.Client) bool {
 		time.Sleep(erasePollInterval)
 		summary, err := client.GetDataflashSummary()
 		if err != nil {
-			log.Printf("Error polling flash summary during erase: %v", err)
+			slog.Warn("error polling flash summary during erase", "error", err)
 			continue
 		}
-		log.Printf("Erase poll: used=%d ready=%t", summary.UsedSize, summary.Ready)
+		slog.Debug("erase poll", "used", summary.UsedSize, "ready", summary.Ready)
 		if summary.UsedSize == 0 && summary.Ready {
 			return true
 		}
@@ -556,7 +557,7 @@ func AutoDetectPort() string {
 		return ""
 	}
 	sort.Strings(matches)
-	log.Printf("Auto-detected port: %s", matches[0])
+	slog.Info("auto-detected port", "port", matches[0])
 	return matches[0]
 }
 

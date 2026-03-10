@@ -75,7 +75,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - **External deps:** `go.bug.st/serial` (serial port), `pelletier/go-toml` (config), `golang.org/x/sys` (disk stats)
 - **Protocol:** MSP v1/v2
 - **Target hardware:** Raspberry Pi Zero W / Zero 2 W
-- **Current version:** `1.0.0`
+- **Current version:** `0.3.0`
 
 ## Major project areas
 
@@ -105,7 +105,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - automated tests passing: **71 tests** (Go, with race detector)
 - vet and build checks passing
 - cross-compilation verified: ARM6 (Pi Zero W) and ARM64 (Pi Zero 2 W)
-- version: **1.0.0** (Go rewrite)
+- version: **0.3.0** (Go rewrite)
 
 ### Important scope boundary
 
@@ -115,7 +115,7 @@ It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
 
-## v1.0.0 — Go Rewrite
+## v0.3.0 — Go Rewrite
 
 ### Complete rewrite from Python to Go
 - **Single static binary**: ~6 MB replaces ~250 MB Python venv — 50× smaller

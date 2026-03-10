@@ -72,7 +72,10 @@ type Server struct {
 // NewServer creates a configured Server with all routes registered.
 func NewServer(storagePath string, cfg *config.Config) *Server {
 	token := make([]byte, 18)
-	_, _ = rand.Read(token)
+	if _, err := rand.Read(token); err != nil {
+		slog.Error("failed to generate CSRF token", "error", err)
+		return nil
+	}
 
 	s := &Server{
 		storagePath: storagePath,
@@ -111,7 +114,15 @@ func (s *Server) ListenAndServe(addr string) error {
 		go s.idleShutdownMonitor()
 	}
 	slog.Info("starting web server", "addr", addr)
-	return http.ListenAndServe(addr, s)
+	srv := &http.Server{
+		Addr:           addr,
+		Handler:        s,
+		ReadTimeout:    15 * time.Second,
+		WriteTimeout:   60 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
+	}
+	return srv.ListenAndServe()
 }
 
 // ServeHTTP implements http.Handler, suppressing per-request log noise.
@@ -237,7 +248,11 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			status := lfSync.GetStatus()
-			data, _ := json.Marshal(status)
+			data, err := json.Marshal(status)
+			if err != nil {
+				slog.Warn("failed to marshal SSE status", "error", err)
+				continue
+			}
 			payload := string(data)
 			if payload != prev {
 				fmt.Fprintf(w, "data: %s\n\n", payload)
@@ -531,10 +546,22 @@ func (s *Server) sendFile(w http.ResponseWriter, r *http.Request, path, filename
 		if len(parts) == 2 {
 			var start, end int64
 			if parts[0] != "" {
-				start, _ = strconv.ParseInt(parts[0], 10, 64)
+				var err error
+				start, err = strconv.ParseInt(parts[0], 10, 64)
+				if err != nil {
+					w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+					w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+					return
+				}
 			}
 			if parts[1] != "" {
-				end, _ = strconv.ParseInt(parts[1], 10, 64)
+				var err error
+				end, err = strconv.ParseInt(parts[1], 10, 64)
+				if err != nil {
+					w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", size))
+					w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+					return
+				}
 			} else {
 				end = size - 1
 			}
@@ -584,7 +611,9 @@ func streamChunked(w io.Writer, r io.Reader, length int64) {
 		}
 		n, err := r.Read(buf[:toRead])
 		if n > 0 {
-			w.Write(buf[:n])
+			if _, wErr := w.Write(buf[:n]); wErr != nil {
+				return
+			}
 			remaining -= int64(n)
 		}
 		if err != nil {
@@ -601,14 +630,18 @@ func (s *Server) sendBody(w http.ResponseWriter, r *http.Request, status int, co
 		w.Header().Set("Content-Encoding", "gzip")
 		w.WriteHeader(status)
 		gz := gzip.NewWriter(w)
-		gz.Write(body)
+		if _, err := gz.Write(body); err != nil {
+			slog.Warn("gzip write error", "error", err)
+		}
 		gz.Close()
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(status)
-	w.Write(body)
+	if _, err := w.Write(body); err != nil {
+		slog.Warn("response write error", "error", err)
+	}
 }
 
 func (s *Server) sendHTML(w http.ResponseWriter, r *http.Request, status int, body string) {

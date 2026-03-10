@@ -53,7 +53,7 @@ Your FC's flash is **never erased** until the copy is verified with SHA-256. Eve
  └──────────────────────────────────────────────────────┘
 ```
 
-Later, from any phone: connect to **`BF-Blackbox`** Wi-Fi → logs open in your browser → download `.bbl` files → open in Blackbox Explorer.
+Later, from any phone: connect to **`LogFalcon`** Wi-Fi → logs open in your browser → download `.bbl` files → open in Blackbox Explorer.
 
 ---
 
@@ -72,7 +72,7 @@ Use [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [Balena Etch
 Before ejecting the SD card, open the `boot` partition and edit **`logfalcon-config.txt`**:
 
 ```ini
-SSID=BF-Blackbox
+SSID=LogFalcon
 PASSWORD=your-password
 ```
 
@@ -104,7 +104,7 @@ To uninstall:
 curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/uninstall.sh | sudo bash
 ```
 
-> 💡 You can also set a specific version: `LOGFALCON_VERSION=v0.3.7 curl -sSL ... | sudo bash`
+> 💡 You can also set a specific version: `LOGFALCON_VERSION=v0.3.8 curl -sSL ... | sudo bash`
 
 ---
 
@@ -133,7 +133,7 @@ passwd
 - Browse log files: `ls ~/blackbox-logs/`
 - Manual update: see [Development & Building](#development--building) below
 
-> 🔑 The Wi-Fi hotspot password is separate: **`fpvpilot`** (SSID `BF-Blackbox`).  
+> 🔑 The Wi-Fi hotspot password is separate: **`fpvpilot`** (SSID `LogFalcon`).  
 > SSH password and hotspot password are independent — changing one does not affect the other.
 
 ---
@@ -172,7 +172,7 @@ Only four patterns — unmistakable at a glance, even in direct sunlight:
 
 ## 📱 Downloading Your Logs
 
-1. **Connect** your phone or laptop to the **`BF-Blackbox`** Wi-Fi network
+1. **Connect** your phone or laptop to the **`LogFalcon`** Wi-Fi network
 2. **Your phone automatically opens the log browser** (captive portal, like airport Wi-Fi)
 3. **Browse** your sessions — grouped by FC, sorted by date
 4. **Tap Download** → open `.bbl` in [Blackbox Explorer](https://github.com/betaflight/blackbox-log-viewer)
@@ -234,7 +234,7 @@ The config file lives at `/etc/logfalcon/logfalcon.toml`. Defaults work out of t
 
 ```toml
 erase_after_sync = true               # Set false to copy without erasing
-hotspot_ssid = "BF-Blackbox"
+hotspot_ssid = "LogFalcon"
 hotspot_password = "fpvpilot"          # Change this!
 storage_path = "/mnt/logfalcon-logs"   # Where logs are stored
 min_free_space_mb = 200                # Always keep this much free

@@ -31,7 +31,7 @@ func TestDefault(t *testing.T) {
 
 	// Web server
 	assertEqual(t, "WebPort", cfg.WebPort, 80)
-	assertEqual(t, "HotspotSSID", cfg.HotspotSSID, "BF-Blackbox")
+	assertEqual(t, "HotspotSSID", cfg.HotspotSSID, "LogFalcon")
 	assertEqual(t, "HotspotPassword", cfg.HotspotPassword, "fpvpilot")
 
 	// Power management

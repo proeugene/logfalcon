@@ -3,7 +3,7 @@
 # Lines starting with # are comments.
 
 # Wi-Fi hotspot name (what you'll see on your phone)
-SSID=BF-Blackbox
+SSID=LogFalcon
 
 # Wi-Fi password (minimum 8 characters, WPA2)
 # Change this before first boot if you do not want to use the launch-default password.

@@ -29,7 +29,7 @@ fi
 cat > /etc/hostapd/hostapd.conf <<EOF
 interface=wlan0
 driver=nl80211
-ssid=BF-Blackbox
+ssid=LogFalcon
 wpa_passphrase=fpvpilot
 hw_mode=g
 channel=6

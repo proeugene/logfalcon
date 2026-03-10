@@ -22,7 +22,7 @@ led_backend = "sysfs"      # "sysfs" (built-in ACT LED) or "gpio" (external)
 led_gpio_pin = 17
 
 # Wi-Fi hotspot and web server
-hotspot_ssid = "BF-Blackbox"
+hotspot_ssid = "LogFalcon"
 hotspot_password = "fpvpilot"
 web_port = 80
 

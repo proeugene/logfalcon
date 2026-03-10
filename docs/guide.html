@@ -17,7 +17,7 @@
     <a href="index.html" class="brand" style="text-decoration:none"><span class="brand-accent">LOG</span>FALCON</a>
     <div class="nav-right">
       <a class="nav-link active" href="guide.html">Guide</a>
-      <span class="version">v0.3.7</span>
+      <span class="version">v0.3.8</span>
       <a class="nav-link" href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
   </nav>
@@ -71,7 +71,7 @@
 
         <h3>Step 3 — Customise Wi-Fi (optional)</h3>
         <p>Before ejecting the SD card, open the <code>boot</code> partition and edit <strong>logfalcon-config.txt</strong>:</p>
-        <pre><code>SSID=BF-Blackbox
+        <pre><code>SSID=LogFalcon
 PASSWORD=your-password</code></pre>
         <div class="info-box">
           <span class="info-badge">💡 TIP</span>
@@ -193,7 +193,7 @@ PASSWORD=your-password</code></pre>
         <h2 class="section-label">// 04 DOWNLOADING LOGS</h2>
 
         <ol class="numbered-list">
-          <li><strong>Connect</strong> your phone or laptop to the <code>BF-Blackbox</code> Wi-Fi network.</li>
+          <li><strong>Connect</strong> your phone or laptop to the <code>LogFalcon</code> Wi-Fi network.</li>
           <li><strong>Captive portal opens automatically</strong> — like airport Wi-Fi. If it doesn't, open
             <code>http://logfalcon.local</code> or <code>http://192.168.4.1</code>.</li>
           <li><strong>Browse sessions</strong> — grouped by FC (variant + UID), sorted by date.</li>
@@ -240,7 +240,7 @@ erase_after_sync = true               # false = copy only, don't erase
 serial_baud = 921600
 
 [hotspot]
-hotspot_ssid = "BF-Blackbox"
+hotspot_ssid = "LogFalcon"
 hotspot_password = "fpvpilot"          # change this!
 
 [storage]

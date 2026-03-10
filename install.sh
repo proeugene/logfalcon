@@ -21,7 +21,7 @@ set -euo pipefail
 INSTALL_DIR="/opt/logfalcon"
 LOG_DIR="/mnt/logfalcon-logs"
 CONFIG_DIR="/etc/logfalcon"
-SSID="BF-Blackbox"
+SSID="LogFalcon"
 WIFI_PASSWORD="fpvpilot"
 HOTSPOT_IP="192.168.4.1"
 HOTSPOT_NETMASK="255.255.255.0"

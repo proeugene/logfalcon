@@ -75,7 +75,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - **External deps:** `go.bug.st/serial` (serial port), `pelletier/go-toml` (config), `golang.org/x/sys` (disk stats)
 - **Protocol:** MSP v1/v2 (v2 for flash reads — 16× throughput vs v1)
 - **Target hardware:** Raspberry Pi Zero W / Zero 2 W
-- **Current version:** `0.3.7`
+- **Current version:** `0.3.8`
 
 ## Major project areas
 
@@ -105,7 +105,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - automated tests passing: **71 tests** (Go, with race detector)
 - vet and build checks passing
 - cross-compilation verified: ARM6 (Pi Zero W) and ARM64 (Pi Zero 2 W)
-- version: **0.3.7** (Go rewrite)
+- version: **0.3.8** (Go rewrite)
 
 ### Important scope boundary
 
@@ -115,12 +115,19 @@ It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
 
-## v0.3.7 — Docs Polish & SSID Fix
+## v0.3.8 — SSID Renamed to LogFalcon
+
+### Wi-Fi SSID default changed from `BF-Blackbox` to `LogFalcon`
+- Updated in Go code (`internal/config/config.go` default), config template (`config/logfalcon.toml`), boot partition template (`boot/logfalcon-config.txt`), pi-gen hostapd config (`02-run-chroot.sh`), root `install.sh`, and `scripts/install.sh`
+- `config_test.go` updated to match new default — all tests pass
+- All docs (`README.md`, `docs/guide.html`) updated consistently
+- Existing installs are unaffected — the SSID is read from the deployed config file, not the compiled binary
+
+## v0.3.7 — Docs Polish & SSID Audit
 
 ### Documentation consistency
-- **SSID inconsistency fixed**: All docs now correctly show `BF-Blackbox` as the default Wi-Fi SSID (was `LogFalcon` in guide.html, README flow diagram, and config example — only the actual code/config had the correct value)
 - **Real-time sync progress documented**: `README.md` and `docs/guide.html` now include text mockups of the live progress display (`Syncing flash… 45%  (2.1 / 4.0 MB) · 1.2 MB/s · ~18s remaining`); `docs/guide.html` §04 explains state badge colours and what to expect
-- **PROJECT_STATUS.md**: stale `0.3.5` version metadata updated to `0.3.7`
+- **PROJECT_STATUS.md**: stale `0.3.5` version metadata corrected
 - All version strings bumped across all docs and site
 
 ### CI/CD fixes (from v0.3.6 follow-up)

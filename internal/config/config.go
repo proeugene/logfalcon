@@ -66,7 +66,7 @@ func Default() *Config {
 		LEDGPIOPin: 17,
 
 		WebPort:         80,
-		HotspotSSID:     "BF-Blackbox",
+		HotspotSSID:     "LogFalcon",
 		HotspotPassword: "fpvpilot",
 
 		IdleShutdownMinutes: 0,

@@ -110,7 +110,7 @@ flash_read_compression = false
 led_backend = "sysfs"
 led_gpio_pin = 17
 
-hotspot_ssid = "BF-Blackbox"
+hotspot_ssid = "LogFalcon"
 hotspot_password = "fpvpilot"
 web_port = 80
 
@@ -131,7 +131,7 @@ if [[ -n "$BOOT_DIR" && ! -f "$BOOT_DIR/logfalcon-config.txt" ]]; then
     cat > "$BOOT_DIR/logfalcon-config.txt" <<'EOF'
 # LogFalcon Wi-Fi hotspot settings
 # Edit these and reboot to apply.
-SSID=BF-Blackbox
+SSID=LogFalcon
 PASSWORD=fpvpilot
 EOF
     info "Created $BOOT_DIR/logfalcon-config.txt (edit to change Wi-Fi name/password)."
@@ -344,7 +344,7 @@ mkdir -p /etc/hostapd
 cat > /etc/hostapd/hostapd.conf <<'HAPEOF'
 interface=wlan0
 driver=nl80211
-ssid=BF-Blackbox
+ssid=LogFalcon
 wpa_passphrase=fpvpilot
 hw_mode=g
 channel=6
@@ -378,7 +378,7 @@ sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/
 # Unblock WiFi
 rfkill unblock wlan 2>/dev/null || true
 
-info "Hotspot configured (SSID: BF-Blackbox, Password: fpvpilot)."
+info "Hotspot configured (SSID: LogFalcon, Password: fpvpilot)."
 
 # --- Enable services ---------------------------------------------------------
 info "Enabling services..."
@@ -425,7 +425,7 @@ info "============================================"
 info "  LogFalcon $VERSION installed successfully!"
 info "============================================"
 echo ""
-info "  Wi-Fi SSID:     BF-Blackbox"
+info "  Wi-Fi SSID:     LogFalcon"
 info "  Wi-Fi Password: fpvpilot"
 info "  Web UI:         http://192.168.4.1"
 info "  mDNS:           http://logfalcon.local"

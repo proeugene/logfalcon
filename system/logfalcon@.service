@@ -23,7 +23,7 @@ Group=dialout
 
 # Install location
 WorkingDirectory=/opt/logfalcon
-ExecStart=/opt/logfalcon/venv/bin/python -m logfalcon --port /dev/%I
+ExecStart=/opt/logfalcon/logfalcon --port /dev/%I
 
 StandardOutput=journal
 StandardError=journal

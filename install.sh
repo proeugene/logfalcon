@@ -56,7 +56,6 @@ fi
 echo "[1/8] Installing system packages..."
 apt-get update -q
 apt-get install -y \
-  python3 python3-pip python3-venv \
   hostapd dnsmasq avahi-daemon \
   rfkill
 
@@ -64,13 +63,10 @@ apt-get install -y \
 rfkill unblock wlan
 
 if [[ $PASSWORD_SET_BY_ARG -eq 0 ]]; then
-  WIFI_PASSWORD="$(
-    python3 - <<'PY'
-import secrets
-alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
-print(''.join(secrets.choice(alphabet) for _ in range(12)))
-PY
-  )"
+  WIFI_PASSWORD="$(head -c 9 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
+  if [[ -z "$WIFI_PASSWORD" ]]; then
+    WIFI_PASSWORD="LogFalcon$(date +%s | tail -c 5)"
+  fi
   GENERATED_PASSWORD=1
 fi
 
@@ -83,12 +79,30 @@ if ! id bbsyncer &>/dev/null; then
     --groups dialout bbsyncer
 fi
 
-### --- 3. Python package --- ###
-echo "[3/8] Installing Python package..."
+### --- 3. Install Go binary --- ###
+echo "[3/8] Installing LogFalcon binary..."
 mkdir -p "$INSTALL_DIR"
-python3 -m venv "$INSTALL_DIR/venv"
-"$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
-"$INSTALL_DIR/venv/bin/pip" install --quiet "$SCRIPT_DIR"
+
+# Detect architecture and copy appropriate binary
+ARCH=$(uname -m)
+case "$ARCH" in
+  armv6l)  BINARY_SUFFIX="arm6" ;;
+  aarch64) BINARY_SUFFIX="arm64" ;;
+  x86_64)  BINARY_SUFFIX="amd64" ;;
+  *)       echo "ERROR: Unsupported architecture: $ARCH"; exit 1 ;;
+esac
+
+BINARY_SRC="$SCRIPT_DIR/bin/logfalcon-${BINARY_SUFFIX}"
+if [[ ! -f "$BINARY_SRC" ]]; then
+  # Try single binary name
+  BINARY_SRC="$SCRIPT_DIR/logfalcon"
+fi
+if [[ ! -f "$BINARY_SRC" ]]; then
+  echo "ERROR: Binary not found. Build first: make build-pi"
+  exit 1
+fi
+
+install -m 755 "$BINARY_SRC" "$INSTALL_DIR/logfalcon"
 
 # Config file
 mkdir -p "$CONFIG_DIR"

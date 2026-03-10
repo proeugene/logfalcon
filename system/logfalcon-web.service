@@ -13,7 +13,7 @@ User=bbsyncer
 Group=bbsyncer
 
 WorkingDirectory=/opt/logfalcon
-ExecStart=/opt/logfalcon/venv/bin/python -m logfalcon --web
+ExecStart=/opt/logfalcon/logfalcon --web
 
 StandardOutput=journal
 StandardError=journal

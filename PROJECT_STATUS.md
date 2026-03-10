@@ -75,7 +75,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - **External deps:** `go.bug.st/serial` (serial port), `pelletier/go-toml` (config), `golang.org/x/sys` (disk stats)
 - **Protocol:** MSP v1/v2 (v2 for flash reads — 16× throughput vs v1)
 - **Target hardware:** Raspberry Pi Zero W / Zero 2 W
-- **Current version:** `0.3.2`
+- **Current version:** `0.3.5`
 
 ## Major project areas
 
@@ -105,7 +105,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - automated tests passing: **71 tests** (Go, with race detector)
 - vet and build checks passing
 - cross-compilation verified: ARM6 (Pi Zero W) and ARM64 (Pi Zero 2 W)
-- version: **0.3.1** (Go rewrite)
+- version: **0.3.5** (Go rewrite)
 
 ### Important scope boundary
 
@@ -114,6 +114,14 @@ This project is for **internal SPI flash blackbox** workflows (Betaflight and iN
 It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
+
+## v0.3.5 — One-liner Install Scripts
+
+### Install / uninstall on existing Pi OS
+- **`scripts/install.sh`**: full one-command installer for existing Raspberry Pi OS installs — detects arch (arm6/arm64), downloads the correct binary from GitHub Releases, installs hostapd/dnsmasq/avahi-daemon, sets up the Wi-Fi hotspot, installs all systemd units (sync, web, firstboot, LED), and applies boot optimizations in a single `curl | sudo bash`
+- **`scripts/uninstall.sh`**: clean one-command uninstaller — stops and disables all services, removes binary, config, systemd units, udev rule, and hotspot config; optionally preserves logs
+- README updated with install/uninstall commands and version pin hint
+- Docs and website updated to v0.3.5
 
 ## v0.3.4 — Performance Optimization
 

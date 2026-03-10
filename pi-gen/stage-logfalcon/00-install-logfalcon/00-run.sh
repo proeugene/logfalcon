@@ -48,7 +48,7 @@ install -m 644 "${REPO_ROOT}/boot/logfalcon-config.txt" "${ROOTFS_DIR}/boot/"
 # Without this, the Pi shows an interactive "enter username" prompt on first boot.
 BOOT_DIR="${ROOTFS_DIR}/boot/firmware"
 [ -d "$BOOT_DIR" ] || BOOT_DIR="${ROOTFS_DIR}/boot"
-HASHED=$(echo 'logfalcon' | openssl passwd -6 -stdin)
+HASHED=$(openssl passwd -6 'logfalcon')
 echo "pi:${HASHED}" > "${BOOT_DIR}/userconf.txt"
 echo "[logfalcon] Created ${BOOT_DIR}/userconf.txt for headless first boot"
 

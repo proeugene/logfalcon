@@ -52,11 +52,19 @@ chmod +x "$INSTALL_DIR/firstboot.sh"
 # Ownership
 chown -R bbsyncer:bbsyncer "$INSTALL_DIR" "$CONFIG_DIR"
 
-# Disable Bookworm first-boot user config wizard — user is pre-configured via
-# FIRST_USER_NAME/FIRST_USER_PASS in pi-gen/config, and userconf.txt is already
-# written to the boot partition by 00-run.sh. Belt-and-suspenders: disable the
-# service here too so it can never trigger interactively on a fresh boot.
-systemctl disable userconfig 2>/dev/null || true
+# ── Disable conflicting services ────────────────────────────────────────────
+# wpa_supplicant runs in Wi-Fi client mode and will fight hostapd for wlan0.
+# We are an AP-only appliance — disable it.
+# Use direct symlink removal: `systemctl disable` is unreliable in a chroot
+# because there is no D-Bus / running systemd to communicate with.
+rm -f /etc/systemd/system/multi-user.target.wants/wpa_supplicant.service
+rm -f /etc/systemd/system/dbus-fi.w1.wpa_supplicant1.service
+
+# Disable Bookworm first-boot user config wizard.
+# userconf.txt on the boot partition (created by 00-run.sh) is the primary fix;
+# removing this symlink is belt-and-suspenders. Again, direct removal is reliable
+# where `systemctl disable` silently fails in chroot.
+rm -f /etc/systemd/system/multi-user.target.wants/userconfig.service
 
 # Cleanup
 rm -rf "$REPO_DIR"

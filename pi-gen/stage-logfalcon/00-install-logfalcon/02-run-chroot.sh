@@ -60,6 +60,30 @@ EOF
 
 grep -q "^no-resolv" /etc/dnsmasq.conf 2>/dev/null || echo "no-resolv" >> /etc/dnsmasq.conf
 
+# dnsmasq override: wait for wlan0 to be configured before starting.
+# Without this, dnsmasq races with systemd-networkd and fails to bind to
+# 192.168.4.1 because the interface isn't up yet.
+mkdir -p /etc/systemd/system/dnsmasq.service.d
+cat > /etc/systemd/system/dnsmasq.service.d/wait-for-wlan0.conf <<EOF
+[Unit]
+After=sys-subsystem-net-devices-wlan0.device network-online.target
+Requires=sys-subsystem-net-devices-wlan0.device
+[Service]
+Restart=on-failure
+RestartSec=3
+EOF
+
+# hostapd override: also ensure it starts after wlan0 device is ready.
+mkdir -p /etc/systemd/system/hostapd.service.d
+cat > /etc/systemd/system/hostapd.service.d/wait-for-wlan0.conf <<EOF
+[Unit]
+After=sys-subsystem-net-devices-wlan0.device
+Requires=sys-subsystem-net-devices-wlan0.device
+[Service]
+Restart=on-failure
+RestartSec=3
+EOF
+
 # avahi mDNS hostname
 sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
 

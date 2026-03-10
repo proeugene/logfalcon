@@ -105,7 +105,7 @@ Both options require leaving the field or spending money on extra hardware. This
 - automated tests passing: **71 tests** (Go, with race detector)
 - vet and build checks passing
 - cross-compilation verified: ARM6 (Pi Zero W) and ARM64 (Pi Zero 2 W)
-- version: **0.3.8** (Go rewrite)
+- version: **0.3.9** (Go rewrite)
 
 ### Important scope boundary
 
@@ -115,7 +115,28 @@ It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
 
-## v0.3.8 — SSID Renamed to LogFalcon
+## v0.3.9 — Hotspot Boot Fixes
+
+Diagnosed via image inspection (Parallels + loop-mount) against a live v0.3.8 image.
+Three root causes prevented the Wi-Fi hotspot from appearing on first boot:
+
+### Bug 1: `wpa_supplicant` competing with `hostapd` for `wlan0`
+- `wpa_supplicant.service` was enabled by default in Bookworm Lite and started in Wi-Fi client mode, stealing `wlan0` from `hostapd` (AP mode)
+- Fix: removed `multi-user.target.wants/wpa_supplicant.service` symlink directly in chroot (we're AP-only; client Wi-Fi is not needed)
+
+### Bug 2: `userconf.txt` not created — first boot interactive login prompt
+- `openssl passwd -6 -stdin` outputs nothing on Linux (Debian/Ubuntu) — the `-stdin` flag is not portable
+- `userconf.txt` was written as `pi:` with no password hash, causing `userconf-pi` to still fire its interactive "enter username" wizard on TTY8 on first boot
+- Fix: changed to `openssl passwd -6 'logfalcon'` (direct argument, portable everywhere)
+- Fix: `userconfig.service` symlink now removed directly instead of via `systemctl disable` (which silently fails in a chroot with no running D-Bus)
+
+### Bug 3: `dnsmasq` starting before `wlan0` is configured
+- `dnsmasq` uses `bind-interfaces` and binds specifically to `wlan0`; if `wlan0` isn't up yet when dnsmasq starts, it fails immediately
+- Fix: added systemd override for both `dnsmasq` and `hostapd` with `After=sys-subsystem-net-devices-wlan0.device` and `Restart=on-failure` so they wait for the interface and retry on transient failures
+
+### Added `scripts/inspect-image.sh`
+- New tool: mounts any LogFalcon `.img` or `.img.xz` via Parallels VM (`prlctl exec`) or Docker, and audits all hotspot configs, service states, binary presence, and common issues
+- Usage: `./scripts/inspect-image.sh [image.img.xz]` (auto-downloads latest release if no arg)
 
 ### Wi-Fi SSID default changed from `BF-Blackbox` to `LogFalcon`
 - Updated in Go code (`internal/config/config.go` default), config template (`config/logfalcon.toml`), boot partition template (`boot/logfalcon-config.txt`), pi-gen hostapd config (`02-run-chroot.sh`), root `install.sh`, and `scripts/install.sh`

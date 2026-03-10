@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload artifact
         if: startsWith(github.ref, 'refs/tags/') != true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: logfalcon-image
           path: ${{ env.IMAGE_PATH }}

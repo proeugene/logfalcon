@@ -3,6 +3,7 @@ name: Go CI
 on:
   push:
     branches: [main, go-rewrite]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -22,7 +23,7 @@ jobs:
 
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.8
 
   test:
     name: Go Test
@@ -81,6 +82,7 @@ jobs:
         with:
           name: logfalcon-${{ matrix.suffix }}
           path: logfalcon-${{ matrix.suffix }}
+          retention-days: 1
 
   release:
     name: Release

@@ -100,8 +100,9 @@ jobs:
           SHRUNK_SIZE=$(du -h "$IMAGE_FILE" | cut -f1)
           echo "After PiShrink: $SHRUNK_SIZE  ($IMAGE_FILE)"
 
-          # -9e = preset 9 extreme; -T0 = all CPU threads
-          xz -9e -T0 "$IMAGE_FILE"
+          # -9 = highest preset; -T0 = all CPU threads; drop -e (extreme) to save
+          # ~5-10 min with negligible size difference on a typical Pi image.
+          xz -9 -T0 "$IMAGE_FILE"
           FINAL_SIZE=$(du -h "${IMAGE_FILE}.xz" | cut -f1)
           echo "Compressed:     $FINAL_SIZE  (${IMAGE_FILE}.xz)"
 

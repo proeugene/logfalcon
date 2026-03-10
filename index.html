@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="LogFalcon — clear your FC flash in 30 seconds. No laptop. No dongles. Keep flying.">
+  <meta name="description" content="LogFalcon — clear your Betaflight or iNav FC flash in the field. No laptop. No dongles. Keep flying.">
   <title>LogFalcon</title>
   <link rel="stylesheet" href="styles.css">
 </head>
@@ -15,8 +15,9 @@
   <nav>
     <span class="brand"><span class="brand-accent">LOG</span>FALCON</span>
     <div class="nav-right">
-      <span class="version">v0.1.2</span>
-      <a class="nav-link" href="https://github.com/proeugene/betaflight-logfalcon" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-link" href="https://github.com/proeugene/logfalcon/blob/main/docs/guide.html" target="_blank" rel="noopener">Guide</a>
+      <span class="version">v0.3.5</span>
+      <a class="nav-link" href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
   </nav>
 
@@ -25,14 +26,14 @@
     <div class="hud-frame">
       <div class="corner-tr"></div>
       <div class="corner-bl"></div>
-      <p class="eyebrow">BETAFLIGHT · BLACKBOX · COMPANION</p>
+      <p class="eyebrow">BETAFLIGHT · INAV · BLACKBOX · COMPANION</p>
       <h1>Keep flying.<br>Never lose<br>a log.</h1>
       <p class="hero-sub">
         FC flash full mid-session? Plug into the Pi. Wait for the LED.<br>
         Fly again. No laptop, no dongles — never leave the field.
       </p>
       <div class="ctas">
-        <a href="https://github.com/proeugene/betaflight-logfalcon/releases" class="btn-primary" target="_blank" rel="noopener">↓ Download Image</a>
+        <a href="https://github.com/proeugene/logfalcon/releases/latest" class="btn-primary" target="_blank" rel="noopener">↓ Download Image</a>
         <a href="#procedure" class="btn-ghost">How it works ↓</a>
       </div>
 
@@ -40,7 +41,7 @@
       <div class="telemetry">
         <div class="telem-item">
           <span class="telem-key">SYNC TIME</span>
-          <span class="telem-val accent">~30–40s</span>
+          <span class="telem-val accent">~30–80s</span>
         </div>
         <div class="telem-sep"></div>
         <div class="telem-item">
@@ -75,13 +76,13 @@
         <span class="step-num">02</span>
         <div class="step-line"></div>
         <p class="step-title">Plug in.</p>
-        <p class="step-body">Connect FC to the Pi Zero W via OTG cable. Sync starts automatically.</p>
+        <p class="step-body">Connect FC to the Pi Zero W via OTG cable (solid LED = ready). Sync starts automatically.</p>
       </div>
       <div class="step">
         <span class="step-num">03</span>
         <div class="step-line"></div>
         <p class="step-title">LED: done.</p>
-        <p class="step-body">~30–40 seconds. Verified. Flash erased. Unplug the FC.</p>
+        <p class="step-body">~30–80 seconds. Verified. Flash erased. Unplug the FC.</p>
       </div>
       <div class="step">
         <span class="step-num">04</span>
@@ -138,7 +139,7 @@
       </div>
       <div class="gear-item">
         <span class="gear-icon">◈</span>
-        <span class="gear-name">Betaflight FC<br>SPI flash</span>
+        <span class="gear-name">Betaflight / iNav FC<br>SPI flash</span>
       </div>
     </div>
   </section>
@@ -147,7 +148,7 @@
   <section class="section">
     <div class="warn-bar">
       <span class="warn-badge">⚠ NOTICE</span>
-      <span class="warn-text">SPI flash only. Requires Betaflight internal SPI flash blackbox — not FC SD-card blackbox. Check Configurator: <strong>Blackbox Device = SPI Flash</strong>.</span>
+      <span class="warn-text">SPI flash only. Requires Betaflight or iNav internal SPI flash blackbox — not FC SD-card blackbox. Check Configurator: <strong>Blackbox Device = SPI Flash</strong>.</span>
     </div>
   </section>
 

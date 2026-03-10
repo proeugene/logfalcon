@@ -1,7 +1,7 @@
 # LogFalcon — Website
 
-Marketing site for [LogFalcon](https://github.com/proeugene/betaflight-logfalcon),
-the field-ready blackbox log companion for Betaflight.
+Marketing site for [LogFalcon](https://github.com/proeugene/logfalcon),
+the field-ready blackbox log companion for Betaflight and iNav.
 
 **Live at:** https://proeugene.github.io/logfalcon/
 

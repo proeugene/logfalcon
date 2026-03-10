@@ -218,9 +218,13 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	status := lfSync.GetStatus()
 	payload := map[string]any{
-		"state":    status.State,
-		"message":  status.Message,
-		"progress": status.Progress,
+		"state":        status.State,
+		"message":      status.Message,
+		"progress":     status.Progress,
+		"bytes_copied": status.BytesCopied,
+		"total_bytes":  status.TotalBytes,
+		"speed_bps":    status.SpeedBPS,
+		"eta_sec":      status.ETASec,
 	}
 	s.addIdleShutdownInfo(payload)
 	s.sendJSON(w, r, http.StatusOK, payload)

@@ -20,3 +20,4 @@ pi-gen/pi-gen-repo/
 *.egg-info/
 .coverage
 __pycache__/
+cover.out

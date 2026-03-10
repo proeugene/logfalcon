@@ -52,5 +52,11 @@ chmod +x "$INSTALL_DIR/firstboot.sh"
 # Ownership
 chown -R bbsyncer:bbsyncer "$INSTALL_DIR" "$CONFIG_DIR"
 
+# Disable Bookworm first-boot user config wizard — user is pre-configured via
+# FIRST_USER_NAME/FIRST_USER_PASS in pi-gen/config, and userconf.txt is already
+# written to the boot partition by 00-run.sh. Belt-and-suspenders: disable the
+# service here too so it can never trigger interactively on a fresh boot.
+systemctl disable userconfig 2>/dev/null || true
+
 # Cleanup
 rm -rf "$REPO_DIR"

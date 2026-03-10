@@ -64,10 +64,13 @@ func RenderIndex(params IndexParams) string {
       background: #2e2e40;
       color: #a0a0b8;
     }
-    #status-badge.syncing  { background: #1a3a5c; color: #60b0ff; }
-    #status-badge.erasing  { background: #3a2a10; color: #ffaa40; }
-    #status-badge.verifying { background: #2a1a4a; color: #c060ff; }
-    #status-badge.error    { background: #3a1a1a; color: #ff6060; }
+    #status-badge.syncing    { background: #1a3a5c; color: #60b0ff; }
+    #status-badge.identifying { background: #1a2a3a; color: #7090b0; animation: pulse 1.8s ease-in-out infinite; }
+    #status-badge.querying   { background: #1a2a3a; color: #7090b0; animation: pulse 1.8s ease-in-out infinite; }
+    #status-badge.erasing    { background: #3a2a10; color: #ffaa40; }
+    #status-badge.verifying  { background: #2a1a4a; color: #c060ff; }
+    #status-badge.error      { background: #3a1a1a; color: #ff6060; }
+    @keyframes pulse { 0%%,100%% { opacity:1; } 50%% { opacity:0.5; } }
     main { max-width: 700px; margin: 0 auto; padding: 16px; }
     .disk-info {
       background: #1a1a24;
@@ -221,8 +224,11 @@ func RenderIndex(params IndexParams) string {
 
 <div id="sync-progress-container" style="background:#1a2a3a; padding:0 20px; display:none;">
   <div style="max-width:700px; margin:0 auto; padding:8px 0; font-size:0.8rem; color:#60b0ff;">
-    <span id="sync-progress-label">Syncing...</span>
-    <div class="progress-bar-track" id="progress-track" style="display:block; margin-top:4px;">
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
+      <span id="sync-progress-label">Syncing...</span>
+      <span id="sync-progress-meta" style="color:#a0c8f0; font-size:0.75rem;"></span>
+    </div>
+    <div class="progress-bar-track" id="progress-track" style="display:block;">
       <div class="progress-bar-fill" id="progress-fill"></div>
     </div>
   </div>
@@ -253,6 +259,22 @@ func RenderIndex(params IndexParams) string {
 </main>
 
 <script>
+  function fmtBytes(b) {
+    if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MB';
+    if (b >= 1024) return (b / 1024).toFixed(0) + ' KB';
+    return b + ' B';
+  }
+  function fmtSpeed(bps) {
+    if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+    if (bps >= 1024) return (bps / 1024).toFixed(0) + ' KB/s';
+    return Math.round(bps) + ' B/s';
+  }
+  function fmtETA(sec) {
+    if (sec <= 0) return '';
+    if (sec >= 60) return '~' + Math.ceil(sec / 60) + 'm remaining';
+    return '~' + sec + 's remaining';
+  }
+
   function updateStatus() {
     fetch('/status')
       .then(r => r.json())
@@ -262,15 +284,21 @@ func RenderIndex(params IndexParams) string {
         const state = data.state || 'idle';
         const progress = data.progress || 0;
         const labels = {
-          idle: 'Idle', identifying: 'Identifying FC\u2026',
-          querying: 'Querying flash\u2026', syncing: 'Syncing\u2026',
-          verifying: 'Verifying\u2026', erasing: 'Erasing\u2026', error: 'Error'
+          idle: 'Idle',
+          identifying: 'Finding FC\u2026',
+          querying: 'Reading flash\u2026',
+          syncing: 'Syncing\u2026',
+          verifying: 'Verifying\u2026',
+          erasing: 'Erasing\u2026',
+          error: 'Error'
         };
         detail.textContent = data.message || 'Ready for the next sync.';
         badge.textContent = (labels[state] || state) +
           (state === 'syncing' && progress > 0 ? ' ' + progress + '%%' : '');
         badge.className = '';
-        if (['syncing','identifying','querying'].includes(state)) badge.classList.add('syncing');
+        if (state === 'syncing') badge.classList.add('syncing');
+        else if (state === 'identifying') badge.classList.add('identifying');
+        else if (state === 'querying') badge.classList.add('querying');
         else if (state === 'erasing') badge.classList.add('erasing');
         else if (state === 'verifying') badge.classList.add('verifying');
         else if (state === 'error') badge.classList.add('error');
@@ -278,12 +306,23 @@ func RenderIndex(params IndexParams) string {
         const progressContainer = document.getElementById('sync-progress-container');
         const progressFill = document.getElementById('progress-fill');
         const progressLabel = document.getElementById('sync-progress-label');
+        const progressMeta = document.getElementById('sync-progress-meta');
         if (state === 'syncing') {
           progressContainer.style.display = 'block';
           progressFill.style.width = progress + '%%';
-          progressLabel.textContent = 'Syncing flash... ' + progress + '%%';
+          const copied = data.bytes_copied || 0;
+          const total = data.total_bytes || 0;
+          const speed = data.speed_bps || 0;
+          const eta = data.eta_sec || 0;
+          progressLabel.textContent = 'Syncing flash\u2026 ' + progress + '%%' +
+            (total > 0 ? '  (' + fmtBytes(copied) + ' / ' + fmtBytes(total) + ')' : '');
+          const parts = [];
+          if (speed > 0) parts.push(fmtSpeed(speed));
+          if (eta > 0) parts.push(fmtETA(eta));
+          progressMeta.textContent = parts.join('  \u00b7  ');
         } else {
           progressContainer.style.display = 'none';
+          if (progressMeta) progressMeta.textContent = '';
         }
 
         const shutBanner = document.getElementById('idle-shutdown-banner');

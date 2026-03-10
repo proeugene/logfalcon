@@ -104,7 +104,37 @@ To uninstall:
 curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/uninstall.sh | sudo bash
 ```
 
-> 💡 You can also set a specific version: `LOGFALCON_VERSION=v0.3.5 curl -sSL ... | sudo bash`
+> 💡 You can also set a specific version: `LOGFALCON_VERSION=v0.3.6 curl -sSL ... | sudo bash`
+
+---
+
+## 🔐 SSH Access
+
+LogFalcon ships with SSH enabled so you can administer the Pi from your laptop or phone.
+
+| | |
+|---|---|
+| **Hostname** | `logfalcon.local` (or `192.168.4.1` when connected to the hotspot) |
+| **Username** | `pi` |
+| **Default password** | `logfalcon` |
+
+```bash
+ssh pi@logfalcon.local
+```
+
+**Change your password immediately** — especially before flying at a shared field:
+
+```bash
+passwd
+```
+
+**Useful SSH tasks:**
+- Check the sync log: `journalctl -u logfalcon -f`
+- Browse log files: `ls ~/blackbox-logs/`
+- Manual update: see [Development & Building](#development--building) below
+
+> 🔑 The Wi-Fi hotspot password is separate: **`fpvpilot`** (SSID `BF-Blackbox`).  
+> SSH password and hotspot password are independent — changing one does not affect the other.
 
 ---
 
@@ -225,6 +255,26 @@ journalctl -u "logfalcon@ttyACM0" -n 50
 journalctl -u logfalcon-web -f
 ```
 If `logfalcon.local` doesn't resolve, use `http://192.168.4.1` directly.
+</details>
+
+<details>
+<summary><strong>Can't SSH in / "connection refused"</strong></summary>
+
+SSH is enabled by default. If you can't connect:
+
+```bash
+# From the Pi console or via web serial
+sudo systemctl enable ssh --now
+```
+
+Default credentials: user `pi`, password `logfalcon`.  
+If you changed the password and forgot it, you'll need to reflash the image.
+</details>
+
+<details>
+<summary><strong>First boot asks for username/password on screen</strong></summary>
+
+This shouldn't happen with the LogFalcon image — the `pi` user is pre-configured and the first-boot wizard is disabled. If you see it anyway, enter username `pi` and password `logfalcon`, then run `sudo raspi-config` to finish setup.
 </details>
 
 <details>

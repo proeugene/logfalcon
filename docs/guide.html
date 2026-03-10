@@ -17,7 +17,7 @@
     <a href="index.html" class="brand" style="text-decoration:none"><span class="brand-accent">LOG</span>FALCON</a>
     <div class="nav-right">
       <a class="nav-link active" href="guide.html">Guide</a>
-      <span class="version">v0.3.5</span>
+      <span class="version">v0.3.6</span>
       <a class="nav-link" href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
   </nav>
@@ -89,6 +89,20 @@ PASSWORD=your-password</code></pre>
         <p>This downloads the correct ARM binary, installs packages, configures the hotspot, and enables all services.
           Reboot when done. To uninstall:</p>
         <pre><code>curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/uninstall.sh | sudo bash</code></pre>
+
+        <h3>SSH access</h3>
+        <p>SSH is enabled by default. Connect from any computer on the same network — or directly through the hotspot:</p>
+        <pre><code>ssh pi@logfalcon.local   # or ssh pi@192.168.4.1 via hotspot</code></pre>
+        <div class="info-box">
+          <span class="info-badge">🔑 DEFAULT</span>
+          <span>Username: <code>pi</code> &nbsp;|&nbsp; Password: <code>logfalcon</code></span>
+        </div>
+        <p>Change your password immediately — especially before flying at a shared field:</p>
+        <pre><code>passwd</code></pre>
+        <div class="info-box">
+          <span class="info-badge">💡 TIP</span>
+          <span>The Wi-Fi hotspot password (<code>fpvpilot</code>) and SSH password are independent — changing one does not affect the other.</span>
+        </div>
       </section>
 
       <!-- ===== FIRST SYNC ===== -->
@@ -331,6 +345,23 @@ idle_shutdown_minutes = 0              # 0 = never auto-shutdown</code></pre>
           <div class="faq-body">
             <p>Your FC logs to an SD card, not internal flash. MSP can't read FC-side SD cards.</p>
             <p>In Configurator, set <strong>Blackbox Device = SPI Flash</strong>, or remove the FC's SD card and read it directly.</p>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary>Can't SSH in / "connection refused"</summary>
+          <div class="faq-body">
+            <p>SSH is enabled by default. Default credentials: user <code>pi</code>, password <code>logfalcon</code>.</p>
+            <pre><code>ssh pi@logfalcon.local   # or ssh pi@192.168.4.1 via hotspot</code></pre>
+            <p>If SSH is not responding, re-enable it from the Pi console:</p>
+            <pre><code>sudo systemctl enable ssh --now</code></pre>
+          </div>
+        </details>
+
+        <details class="faq">
+          <summary>First boot shows "Please enter new username" on screen</summary>
+          <div class="faq-body">
+            <p>This shouldn't happen with the LogFalcon image — the <code>pi</code> user is pre-configured and the first-boot wizard is disabled. If you see it, enter username <code>pi</code> and password <code>logfalcon</code>. Then verify you used the correct <code>logfalcon-*.img.xz</code> image from GitHub Releases.</p>
           </div>
         </details>
 

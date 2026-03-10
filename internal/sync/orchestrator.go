@@ -50,9 +50,13 @@ const (
 
 // Status is the thread-safe sync status read by the web server.
 type Status struct {
-	State    string `json:"state"`
-	Progress int    `json:"progress"`
-	Message  string `json:"message"`
+	State       string  `json:"state"`
+	Progress    int     `json:"progress"`
+	Message     string  `json:"message"`
+	BytesCopied uint32  `json:"bytes_copied"`
+	TotalBytes  uint32  `json:"total_bytes"`
+	SpeedBPS    float64 `json:"speed_bps"`
+	ETASec      int     `json:"eta_sec"`
 }
 
 var (
@@ -78,6 +82,22 @@ func SetStatus(state string, progress int, message string) {
 		State:    state,
 		Progress: progress,
 		Message:  message,
+	}
+}
+
+// SetStatusSync updates sync status with real-time transfer metrics (thread-safe).
+// Used during the flash-read loop to emit byte counter, speed, and ETA.
+func SetStatusSync(state string, progress int, message string, bytesCopied, totalBytes uint32, speedBPS float64, etaSec int) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	currentStatus = Status{
+		State:       state,
+		Progress:    progress,
+		Message:     message,
+		BytesCopied: bytesCopied,
+		TotalBytes:  totalBytes,
+		SpeedBPS:    speedBPS,
+		ETASec:      etaSec,
 	}
 }
 
@@ -383,6 +403,7 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 	consecutiveErrors := 0
 	chunkSize := uint16(cfg.FlashChunkSize)
 	compression := cfg.FlashReadCompression
+	syncStart := time.Now()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -478,7 +499,20 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 		address = nextAddr
 
 		progress := int(address * 100 / usedSize)
-		SetStatus("syncing", progress, "Copying blackbox flash to the Pi SD card.")
+
+		// Compute real-time transfer speed and ETA.
+		elapsed := time.Since(syncStart).Seconds()
+		var speedBPS float64
+		var etaSec int
+		if elapsed > 0 {
+			speedBPS = float64(address) / elapsed
+			if speedBPS > 0 {
+				etaSec = int(float64(usedSize-address) / speedBPS)
+			}
+		}
+		SetStatusSync("syncing", progress, "Copying blackbox flash to the Pi SD card.",
+			address, usedSize, speedBPS, etaSec)
+
 		if address%(uint32(chunkSize)*64) < uint32(chunkSize) {
 			slog.Debug("flash read progress", "address", fmt.Sprintf("0x%08x", address),
 				"total", fmt.Sprintf("0x%08x", usedSize), "percent", progress)

@@ -115,6 +115,24 @@ It does **not** read blackbox logs stored on an FC-side SD card over MSP.
 
 ## Recent changelog
 
+## v0.3.6 — SSH Docs + Headless Boot Fix + Real-Time Sync Progress
+
+### Headless boot fix (Bookworm / Pi Zero 2 W)
+- **Root cause**: Raspberry Pi OS Bookworm removed the default `pi` user; `userconfig.service` from `userconf-pi` triggered an interactive "enter username" wizard on first boot — fatal for a headless field appliance
+- **Belt-and-suspenders fix**: `pi-gen/config` sets `FIRST_USER_PASS=logfalcon` (pi-gen creates the user at build time); `00-run.sh` creates `userconf.txt` in the boot partition (official Bookworm headless method); `00-run-chroot.sh` disables `userconfig.service`
+- Default SSH password changed from `raspberry` → `logfalcon` (device-specific, less guessable)
+
+### SSH access documented
+- New **🔐 SSH Access** section in `README.md`
+- Setup and Troubleshooting sections in `docs/guide.html` now document default credentials, `passwd`, and SSH connection strings
+
+### Real-time sync progress on web dashboard
+- `Status` struct extended with `BytesCopied`, `TotalBytes`, `SpeedBPS`, `ETASec` fields
+- Flash-read loop emits real-time metrics every chunk: bytes copied, transfer speed (MB/s), and ETA
+- `handleStatus` passes new fields in the JSON response
+- Web UI now shows: `Syncing flash… 45%  (2.1 / 4.0 MB)` + speed + ETA below the progress bar
+- State badge now distinguishes `identifying`/`querying` (gray-blue pulsing) from `syncing` (solid blue)
+
 ## v0.3.5 — One-liner Install Scripts
 
 ### Install / uninstall on existing Pi OS

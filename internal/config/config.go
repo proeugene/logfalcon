@@ -49,7 +49,7 @@ type Config struct {
 // Default returns a Config populated with all default values.
 func Default() *Config {
 	return &Config{
-		SerialBaud:    115200,
+		SerialBaud:    921600,
 		SerialPort:    "",
 		SerialTimeout: 5.0,
 
@@ -58,7 +58,7 @@ func Default() *Config {
 		StoragePressureCleanup: true,
 
 		EraseAfterSync:       true,
-		FlashChunkSize:       16384,
+		FlashChunkSize:       4096,
 		EraseTimeoutSec:      120,
 		FlashReadCompression: false,
 

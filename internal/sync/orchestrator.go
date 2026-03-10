@@ -421,7 +421,7 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 				r := ResultError
 				return &r
 			}
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			// Re-send the same request on error.
 			retrySize := chunkSize
 			if remaining := usedSize - address; uint16(remaining) < retrySize {

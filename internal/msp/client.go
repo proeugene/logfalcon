@@ -65,6 +65,14 @@ func (c *Client) Send(code byte, payload []byte) error {
 	return err
 }
 
+// SendV2 encodes and writes an MSP v2 request frame to the serial port.
+// V2 frames use a 16-bit length field, enabling responses larger than 255 bytes.
+func (c *Client) SendV2(code uint16, payload []byte) error {
+	data := EncodeV2(code, payload)
+	_, err := c.port.Write(data)
+	return err
+}
+
 // Receive blocks until a response frame with the given code arrives or the
 // timeout expires. Decoded frames for other codes are buffered in pending.
 func (c *Client) Receive(code uint16) (*Frame, error) {
@@ -190,6 +198,7 @@ func (c *Client) GetDataflashSummary() (*DataflashSummary, error) {
 }
 
 // SendFlashReadRequest sends MSP_DATAFLASH_READ with the given parameters.
+// Uses MSP v2 framing for larger response payloads (~4 KB vs 255 B with v1).
 // If the FC is not Betaflight, compression is forced off.
 func (c *Client) SendFlashReadRequest(address uint32, size uint16, compression bool) error {
 	if c.FCVariant != BTFLVariant {
@@ -203,7 +212,7 @@ func (c *Client) SendFlashReadRequest(address uint32, size uint16, compression b
 	binary.LittleEndian.PutUint32(payload[0:4], address)
 	binary.LittleEndian.PutUint16(payload[4:6], size)
 	payload[6] = comprFlag
-	return c.Send(MSPDataflashRead, payload)
+	return c.SendV2(MSPDataflashRead, payload)
 }
 
 // ReceiveFlashReadResponse reads and parses the next MSP_DATAFLASH_READ response.

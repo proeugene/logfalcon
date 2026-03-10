@@ -10,7 +10,7 @@ func TestDefault(t *testing.T) {
 	cfg := Default()
 
 	// Serial
-	assertEqual(t, "SerialBaud", cfg.SerialBaud, 115200)
+	assertEqual(t, "SerialBaud", cfg.SerialBaud, 921600)
 	assertEqual(t, "SerialPort", cfg.SerialPort, "")
 	assertEqualFloat(t, "SerialTimeout", cfg.SerialTimeout, 5.0)
 
@@ -21,7 +21,7 @@ func TestDefault(t *testing.T) {
 
 	// Sync behaviour
 	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, true)
-	assertEqual(t, "FlashChunkSize", cfg.FlashChunkSize, 16384)
+	assertEqual(t, "FlashChunkSize", cfg.FlashChunkSize, 4096)
 	assertEqual(t, "EraseTimeoutSec", cfg.EraseTimeoutSec, 120)
 	assertEqualBool(t, "FlashReadCompression", cfg.FlashReadCompression, false)
 
@@ -109,13 +109,13 @@ hotspot_ssid = "CustomSSID"
 	assertEqual(t, "HotspotSSID", cfg.HotspotSSID, "CustomSSID")
 
 	// Non-overridden fields remain at defaults.
-	assertEqual(t, "SerialBaud", cfg.SerialBaud, 115200)
+	assertEqual(t, "SerialBaud", cfg.SerialBaud, 921600)
 	assertEqualFloat(t, "SerialTimeout", cfg.SerialTimeout, 5.0)
 	assertEqual(t, "StoragePath", cfg.StoragePath, "/mnt/logfalcon-logs")
 	assertEqual(t, "MinFreeSpaceMB", cfg.MinFreeSpaceMB, 200)
 	assertEqualBool(t, "StoragePressureCleanup", cfg.StoragePressureCleanup, true)
 	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, true)
-	assertEqual(t, "FlashChunkSize", cfg.FlashChunkSize, 16384)
+	assertEqual(t, "FlashChunkSize", cfg.FlashChunkSize, 4096)
 	assertEqual(t, "EraseTimeoutSec", cfg.EraseTimeoutSec, 120)
 	assertEqualBool(t, "FlashReadCompression", cfg.FlashReadCompression, false)
 	assertEqual(t, "LEDBackend", cfg.LEDBackend, "sysfs")

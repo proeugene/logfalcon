@@ -37,21 +37,31 @@ var allowedDownloads = map[string]bool{
 	"manifest.json": true,
 }
 
-var captivePaths = map[string]bool{
-	"/generate_204":              true,
-	"/gen_204":                   true,
-	"/hotspot-detect.html":       true,
-	"/library/test/success.html": true,
-	"/connecttest.txt":           true,
-	"/ncsi.txt":                  true,
+// captivePortalPaths maps each OS network probe path to the exact response it
+// expects when the network has working internet access. Returning these "success"
+// responses prevents iOS/Android/Windows from marking the network as "no internet"
+// and routing all app traffic over cellular instead of Wi-Fi. Since dnsmasq
+// resolves ALL DNS to 192.168.4.1, every URL the user types in a browser lands
+// on our server — the catch-all GET / handler serves the dashboard for anything
+// not explicitly registered.
+//
+// Without this fix: iOS says "internet not available", silently switches to
+// cellular data, and no URLs work while connected to the hotspot.
+var captivePortalPaths = map[string]struct {
+	status int
+	body   string
+	ctype  string
+}{
+	// iOS / macOS — expects exact Apple success page
+	"/hotspot-detect.html":       {200, "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>", "text/html"},
+	"/library/test/success.html": {200, "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>", "text/html"},
+	// Android — expects 204 No Content (empty body)
+	"/generate_204": {204, "", "text/plain"},
+	"/gen_204":      {204, "", "text/plain"},
+	// Windows NCSI
+	"/ncsi.txt":      {200, "Microsoft NCSI", "text/plain"},
+	"/connecttest.txt": {200, "Microsoft Connect Test", "text/plain"},
 }
-
-const captiveHTML = `<!DOCTYPE html><html><head>` +
-	`<meta http-equiv="refresh" content="0; url=/">` +
-	`<title>LogFalcon</title>` +
-	`</head><body>` +
-	`<p>Redirecting to <a href="/">LogFalcon</a>...</p>` +
-	`</body></html>`
 
 // Server is the LogFalcon HTTP server.
 type Server struct {
@@ -96,11 +106,16 @@ func NewServer(storagePath string, cfg *config.Config) *Server {
 	s.mux.HandleFunc("GET /settings", s.handleSettingsGet)
 	s.mux.HandleFunc("POST /settings", s.handleSettingsPost)
 
-	// Captive portal probes
-	for path := range captivePaths {
-		p := path // capture
-		s.mux.HandleFunc("GET "+p, func(w http.ResponseWriter, r *http.Request) {
-			s.sendHTML(w, r, http.StatusOK, captiveHTML)
+	// Captive portal probes — respond with OS-specific "internet OK" responses
+	// so iOS/Android/Windows keep all traffic on the Wi-Fi interface.
+	for path, resp := range captivePortalPaths {
+		p, r := path, resp // capture loop variables
+		s.mux.HandleFunc("GET "+p, func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", r.ctype)
+			w.WriteHeader(r.status)
+			if r.body != "" {
+				_, _ = w.Write([]byte(r.body))
+			}
 		})
 	}
 

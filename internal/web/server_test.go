@@ -102,22 +102,31 @@ func TestStatusEndpoint(t *testing.T) {
 func TestCaptivePortal(t *testing.T) {
 	s, _ := newTestServer(t)
 
-	paths := []string{"/generate_204", "/gen_204", "/hotspot-detect.html", "/connecttest.txt", "/ncsi.txt"}
-	for _, path := range paths {
-		req := httptest.NewRequest(http.MethodGet, path, nil)
+	tests := []struct {
+		path           string
+		wantStatus     int
+		wantBodySubstr string // empty = no body check
+	}{
+		// iOS/macOS — success page
+		{"/hotspot-detect.html", http.StatusOK, "Success"},
+		{"/library/test/success.html", http.StatusOK, "Success"},
+		// Android — 204 No Content, no body
+		{"/generate_204", http.StatusNoContent, ""},
+		{"/gen_204", http.StatusNoContent, ""},
+		// Windows NCSI
+		{"/ncsi.txt", http.StatusOK, "Microsoft NCSI"},
+		{"/connecttest.txt", http.StatusOK, "Microsoft Connect Test"},
+	}
+	for _, tt := range tests {
+		req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, req)
 
-		if w.Code != http.StatusOK {
-			t.Errorf("%s: expected 200, got %d", path, w.Code)
+		if w.Code != tt.wantStatus {
+			t.Errorf("%s: expected %d, got %d", tt.path, tt.wantStatus, w.Code)
 		}
-		body := w.Body.String()
-		if len(body) == 0 {
-			t.Errorf("%s: empty body", path)
-		}
-		// Should contain a redirect to /
-		if !containsStr(body, `url=/`) && !containsStr(body, `href="/"`) {
-			t.Errorf("%s: body does not contain redirect to /", path)
+		if tt.wantBodySubstr != "" && !containsStr(w.Body.String(), tt.wantBodySubstr) {
+			t.Errorf("%s: body %q does not contain %q", tt.path, w.Body.String(), tt.wantBodySubstr)
 		}
 	}
 }

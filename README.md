@@ -104,7 +104,7 @@ To uninstall:
 curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/uninstall.sh | sudo bash
 ```
 
-> 💡 You can also set a specific version: `LOGFALCON_VERSION=v0.4.4 curl -sSL ... | sudo bash`
+> 💡 You can also set a specific version: `LOGFALCON_VERSION=v0.4.5 curl -sSL ... | sudo bash`
 
 ---
 
@@ -257,8 +257,8 @@ journalctl -u "logfalcon@ttyACM0" -n 50
 <summary><strong>FC not detected (no LED response)</strong></summary>
 
 - Make sure you're using the Pi's **inner** micro-USB port (OTG), not the power port
-- Confirm your FC shows up as `/dev/ttyACM0` on a normal PC
-- Check the STM32 USB VID: `lsusb | grep 0483`
+- Confirm your FC shows up as a serial port on a normal PC (`/dev/ttyACM0` for STM32, `/dev/ttyUSB0` for CP2102/CH340)
+- Check the FC USB VID: `lsusb` — look for `0483` (STM32), `10c4` (CP2102), or `1a86` (CH340)
 - Try a shorter or better-quality USB cable
 </details>
 
@@ -423,7 +423,12 @@ internal/
 
 ### How the Sync Works
 
-The Pi speaks **MSP v2** (with v1 fallback for handshake) over USB CDC-ACM. A udev rule detects the FC (STM VID `0x0483`) and fires a one-shot systemd service:
+The Pi speaks **MSP v2** (with v1 fallback for handshake) over USB CDC-ACM/serial. A udev rule detects the FC and fires a one-shot systemd service:
+
+Supported FC USB chips:
+- **STM32 native USB** (VID `0x0483`) → `ttyACM*` — most modern F4/F7/H7 boards
+- **CP2102** (VID `0x10c4`, PID `0xea60`) → `ttyUSB*` — some budget boards
+- **CH340/CH341** (VID `0x1a86`) → `ttyUSB*` — common on Chinese budget boards
 
 1. Wait 3s for USB to settle
 2. Identify FC — `MSP_FC_VARIANT` (must be `BTFL` or `INAV`) + `MSP_UID`

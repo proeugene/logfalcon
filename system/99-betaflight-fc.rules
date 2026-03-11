@@ -1,12 +1,39 @@
-# udev rule: trigger bbsyncer sync service when a Betaflight FC (STM32 VID) is plugged in
+# udev rules: trigger logfalcon sync service when a flight controller is plugged in.
 # Install to: /etc/udev/rules.d/99-betaflight-fc.rules
 # Reload: sudo udevadm control --reload-rules && sudo udevadm trigger
 
-# STMicroelectronics VID 0x0483, NOT in DFU mode (product 0xdf11)
-# Matches CDC-ACM serial ports (ttyACM*)
+# STMicroelectronics VID 0x0483 — native USB (STM32 CDC-ACM)
+# Used by most modern Betaflight/iNav targets (F4, F7, H7 with native USB)
+# Appears as ttyACM* — NOT in DFU mode (product 0xdf11)
 SUBSYSTEM=="tty", \
   ATTRS{idVendor}=="0483", \
   ATTRS{idProduct}!="df11", \
   KERNEL=="ttyACM*", \
+  TAG+="systemd", \
+  ENV{SYSTEMD_WANTS}="logfalcon@%k.service"
+
+# Silicon Labs CP2102 VID 0x10c4 PID 0xea60 — USB-to-serial bridge
+# Used by some budget FCs and older boards (HGLRC, Mamba, etc.)
+# Appears as ttyUSB*
+SUBSYSTEM=="tty", \
+  ATTRS{idVendor}=="10c4", \
+  ATTRS{idProduct}=="ea60", \
+  KERNEL=="ttyUSB*", \
+  TAG+="systemd", \
+  ENV{SYSTEMD_WANTS}="logfalcon@%k.service"
+
+# WinChipHead CH340/CH341 VID 0x1a86 — USB-to-serial bridge
+# Common on cheap Chinese FC boards and Arduino-style targets
+# Appears as ttyUSB*
+SUBSYSTEM=="tty", \
+  ATTRS{idVendor}=="1a86", \
+  ATTRS{idProduct}=="7523", \
+  KERNEL=="ttyUSB*", \
+  TAG+="systemd", \
+  ENV{SYSTEMD_WANTS}="logfalcon@%k.service"
+SUBSYSTEM=="tty", \
+  ATTRS{idVendor}=="1a86", \
+  ATTRS{idProduct}=="7522", \
+  KERNEL=="ttyUSB*", \
   TAG+="systemd", \
   ENV{SYSTEMD_WANTS}="logfalcon@%k.service"

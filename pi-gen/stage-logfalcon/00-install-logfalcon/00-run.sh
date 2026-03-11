@@ -63,19 +63,16 @@ systemctl enable dnsmasq
 systemctl enable avahi-daemon
 CHEOF
 
-# ── USB gadget SSH (baked into every image) ──────────────────────────────────
-# Enables USB gadget ethernet (g_ether) so the Pi presents itself as a USB
-# network adapter when connected via its OTG data port. Combined with the
-# static usb0 IP (10.55.55.1) set by dhcpcd, this allows SSH debugging without
-# needing the Wi-Fi hotspot: set your host to 10.55.55.2, ssh pi@10.55.55.1.
-BOOT_FW="${ROOTFS_DIR}/boot/firmware"
-[ -d "$BOOT_FW" ] || BOOT_FW="${ROOTFS_DIR}/boot"
-
-# Append dwc2 overlay to config.txt
-echo "" >> "${BOOT_FW}/config.txt"
-echo "# USB gadget (OTG) — enables SSH over USB data port" >> "${BOOT_FW}/config.txt"
-echo "dtoverlay=dwc2" >> "${BOOT_FW}/config.txt"
-
-# Insert modules-load after rootwait in cmdline.txt (must stay one line)
-sed -i 's/rootwait/rootwait modules-load=dwc2,g_ether/' "${BOOT_FW}/cmdline.txt"
-echo "[logfalcon] USB gadget SSH enabled in boot config"
+# NOTE: USB gadget SSH (g_ether) is NOT enabled by default.
+# The Pi Zero 2 W has one OTG port. Loading g_ether puts it in USB device
+# mode, which prevents the Pi from enumerating FC devices plugged into it.
+# FC detection (the primary function of this device) requires host mode.
+#
+# SSH via Wi-Fi hotspot (ssh pi@192.168.4.1) is the standard access method.
+#
+# To enable USB gadget SSH for debugging, add these lines to config.txt:
+#   dtoverlay=dwc2
+# And append to cmdline.txt (same line, before rootwait):
+#   modules-load=dwc2,g_ether
+# Then set your host IP to 10.55.55.2 and ssh pi@10.55.55.1.
+echo "[logfalcon] USB gadget SSH intentionally disabled — OTG port in host mode for FC detection"

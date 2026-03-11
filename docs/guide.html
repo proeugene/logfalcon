@@ -17,7 +17,7 @@
     <a href="index.html" class="brand" style="text-decoration:none"><span class="brand-accent">LOG</span>FALCON</a>
     <div class="nav-right">
       <a class="nav-link active" href="guide.html">Guide</a>
-      <span class="version">v0.4.4</span>
+      <span class="version">v0.4.5</span>
       <a class="nav-link" href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GitHub ↗</a>
     </div>
   </nav>
@@ -325,8 +325,8 @@ idle_shutdown_minutes = 0              # 0 = never auto-shutdown</code></pre>
           <div class="faq-body">
             <ul>
               <li>Make sure you're using the Pi's <strong>inner</strong> micro-USB port (OTG), not the power port.</li>
-              <li>Confirm your FC shows up as <code>/dev/ttyACM0</code> on a normal PC.</li>
-              <li>Check the STM32 USB VID: <code>lsusb | grep 0483</code></li>
+              <li>Confirm your FC shows up as a serial port on a normal PC: <code>/dev/ttyACM0</code> (STM32) or <code>/dev/ttyUSB0</code> (CP2102/CH340).</li>
+              <li>Check the FC USB chip: <code>lsusb</code> — look for VID <code>0483</code> (STM32), <code>10c4</code> (CP2102), or <code>1a86</code> (CH340). All three are supported.</li>
               <li>Try a shorter or better-quality USB cable.</li>
             </ul>
           </div>

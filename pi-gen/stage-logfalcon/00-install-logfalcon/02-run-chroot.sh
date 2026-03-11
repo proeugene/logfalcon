@@ -2,7 +2,6 @@
 # Configure Wi-Fi hotspot
 
 HOTSPOT_IP="192.168.4.1"
-USB_GADGET_IP="10.55.55.1"
 
 # Static IP on wlan0 via dhcpcd (standard RPi OS Bookworm networking)
 if [ -f /etc/dhcpcd.conf ]; then
@@ -12,10 +11,6 @@ if [ -f /etc/dhcpcd.conf ]; then
 interface wlan0
 static ip_address=${HOTSPOT_IP}/24
 nohook wpa_supplicant
-
-# USB gadget interface (for SSH debugging when hotspot is unavailable)
-interface usb0
-static ip_address=${USB_GADGET_IP}/24
 EOF
 else
     # Fallback: systemd-networkd for non-dhcpcd images
@@ -26,13 +21,6 @@ Name=wlan0
 
 [Network]
 Address=${HOTSPOT_IP}/24
-EOF
-    cat > /etc/systemd/network/10-usb0-static.network <<EOF
-[Match]
-Name=usb0
-
-[Network]
-Address=${USB_GADGET_IP}/24
 EOF
     systemctl enable systemd-networkd 2>/dev/null || true
 fi
@@ -66,7 +54,7 @@ sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default
 mkdir -p /etc/NetworkManager/conf.d
 cat > /etc/NetworkManager/conf.d/logfalcon-unmanaged.conf <<EOF
 [keyfile]
-unmanaged-devices=interface-name:wlan0;interface-name:usb0
+unmanaged-devices=interface-name:wlan0
 EOF
 
 # dnsmasq config

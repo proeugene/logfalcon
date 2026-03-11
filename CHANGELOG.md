@@ -2,7 +2,24 @@
 
 All notable changes to LogFalcon are documented here.
 
+## [v0.4.5] — 2026-03
+
+### Fixed — FC detection restored + broader FC support (CP2102, CH340)
+
+**FC was never detected (OTG port stuck in USB device mode):**
+In v0.4.2, `dtoverlay=dwc2` + `modules-load=dwc2,g_ether` were added to enable USB gadget SSH debugging. Loading `g_ether` puts the Pi's OTG port into USB **device/peripheral mode** — in this mode the Pi presents itself as a USB network adapter and cannot enumerate any devices plugged into it. The FC was invisible to udev and the sync service never triggered.
+
+Fix: removed `g_ether` from the default image. The OTG port now operates in host mode, as required for FC detection. SSH via Wi-Fi hotspot (`ssh pi@192.168.4.1` with password `logfalcon`) is the standard access method. USB gadget SSH is documented as an opt-in advanced feature.
+
+**Added support for CP2102 and CH340 USB-to-serial FCs:**
+The udev rule previously only matched STM32 native USB (VID `0x0483`), used by most modern F4/F7/H7 boards. Many budget FCs and older designs use CP2102 or CH340 USB-to-serial bridge chips. These now trigger sync automatically:
+- CP2102 (Silicon Labs, VID `0x10c4` PID `0xea60`) → appears as `ttyUSB*`
+- CH340/CH341 (WinChipHead, VID `0x1a86` PID `0x7523`/`0x7522`) → appears as `ttyUSB*`
+
+---
+
 ## [v0.4.4] — 2026-03
+
 
 ### Fixed — SSH password (pi/logfalcon) and captive portal URL routing
 

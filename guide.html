@@ -194,8 +194,8 @@ PASSWORD=your-password</code></pre>
 
         <ol class="numbered-list">
           <li><strong>Connect</strong> your phone or laptop to the <code>LogFalcon</code> Wi-Fi network.</li>
-          <li><strong>Captive portal opens automatically</strong> — like airport Wi-Fi. If it doesn't, open
-            <code>http://logfalcon.local</code> or <code>http://192.168.4.1</code>.</li>
+          <li><strong>Captive portal opens automatically</strong> — like airport Wi-Fi. If it doesn't, type
+            <strong><code>http://log.falcon</code></strong> in any browser.</li>
           <li><strong>Browse sessions</strong> — grouped by FC (variant + UID), sorted by date.</li>
           <li><strong>Download</strong> <code>.bbl</code> files → open in
             <a href="https://github.com/betaflight/blackbox-log-viewer" target="_blank" rel="noopener">Blackbox Explorer</a>.</li>
@@ -336,7 +336,7 @@ idle_shutdown_minutes = 0              # 0 = never auto-shutdown</code></pre>
           <summary>Web UI not loading</summary>
           <div class="faq-body">
             <pre><code>journalctl -u logfalcon-web -f</code></pre>
-            <p>If <code>logfalcon.local</code> doesn't resolve, use <code>http://192.168.4.1</code> directly.</p>
+            <p>If the page won't load, try <strong><code>http://log.falcon</code></strong> or <code>http://192.168.4.1</code> directly.</p>
           </div>
         </details>
 

@@ -3,7 +3,7 @@ module github.com/proeugene/logfalcon
 go 1.23
 
 require (
-	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/pelletier/go-toml/v2 v2.3.0
 	go.bug.st/serial v1.6.4
 )
 

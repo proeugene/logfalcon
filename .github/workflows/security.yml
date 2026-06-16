@@ -21,15 +21,15 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.25.x"
 
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
 
       - name: Run govulncheck
         run: |
-          echo "::notice::Running govulncheck (informational — stdlib vulns cannot be fixed without Go version bump)"
-          govulncheck ./... || echo "::warning::govulncheck found vulnerabilities (see above). Stdlib issues require Go patch update."
+          echo "::notice::Running govulncheck with the patched CI Go toolchain"
+          govulncheck ./... || echo "::warning::govulncheck found vulnerabilities (see above)."
 
   codeql:
     name: CodeQL
@@ -41,7 +41,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version: "1.25.x"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3

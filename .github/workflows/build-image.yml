@@ -34,7 +34,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.25.x'
 
       # ── Gate 1: Security Scan (Section 3.2) ───────────────────────────────
       # Blocks the pipeline if any known CVEs exist in the dependency graph.
@@ -111,10 +111,10 @@ jobs:
 
       - name: Shrink and compress image
         run: |
-          ls -la pi-gen/pi-gen-repo/deploy/ || true
+          find pi-gen/pi-gen-repo/deploy -maxdepth 1 -type f -print || true
           cd pi-gen/pi-gen-repo/deploy
 
-          IMAGE_FILE=$(ls *.img 2>/dev/null | head -1)
+          IMAGE_FILE=$(find . -maxdepth 1 -type f -name '*.img' -printf '%f\n' | sort | head -n 1)
           if [ -z "$IMAGE_FILE" ]; then
             echo "::error::No .img file found in deploy directory"
             exit 1
@@ -156,15 +156,19 @@ jobs:
           echo "Compressed:     $FINAL_SIZE  (${IMAGE_FILE}.xz)"
 
           # Write a human-readable summary to the job summary
-          echo "## Image sizes" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Stage | Size |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Raw .img | $RAW_SIZE |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| After PiShrink | $SHRUNK_SIZE |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Final .img.xz | $FINAL_SIZE |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Image sizes"
+            echo "| Stage | Size |"
+            echo "|---|---|"
+            echo "| Raw .img | $RAW_SIZE |"
+            echo "| After PiShrink | $SHRUNK_SIZE |"
+            echo "| Final .img.xz | $FINAL_SIZE |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "IMAGE_NAME=${IMAGE_FILE}.xz" >> "$GITHUB_ENV"
-          echo "IMAGE_PATH=pi-gen/pi-gen-repo/deploy/${IMAGE_FILE}.xz" >> "$GITHUB_ENV"
+          {
+            echo "IMAGE_NAME=${IMAGE_FILE}.xz"
+            echo "IMAGE_PATH=pi-gen/pi-gen-repo/deploy/${IMAGE_FILE}.xz"
+          } >> "$GITHUB_ENV"
 
       - name: Upload artifact
         if: ${{ inputs.upload_artifact }}

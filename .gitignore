@@ -17,7 +17,7 @@ logfalcon
 
 # pi-gen build artifacts
 pi-gen/pi-gen-repo/
-*.egg-info/
-.coverage
-__pycache__/
 cover.out
+
+# AI session transcripts
+session-ses_*.md

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"reflect"
+	"strconv"
 
 	toml "github.com/pelletier/go-toml/v2"
 )
@@ -97,11 +98,14 @@ func Load(path string) (*Config, error) {
 			slog.Warn("failed to load config", "path", candidate, "error", err)
 			continue
 		}
+		applyEnvOverrides(cfg)
 		return cfg, nil
 	}
 
 	slog.Debug("using default config (no config file found)")
-	return Default(), nil
+	cfg := Default()
+	applyEnvOverrides(cfg)
+	return cfg, nil
 }
 
 // loadFile reads a single TOML file and applies its values over defaults.
@@ -147,4 +151,44 @@ func knownKeys() map[string]bool {
 		}
 	}
 	return keys
+}
+
+// applyEnvOverrides reads environment variables and overrides config fields
+// when the variable is set and valid. Invalid values log a warning and are
+// silently ignored, preserving the current value.
+func applyEnvOverrides(cfg *Config) {
+	if v, ok := os.LookupEnv("LOGFALCON_STORAGE_PATH"); ok {
+		cfg.StoragePath = v
+	}
+	if v, ok := os.LookupEnv("LOGFALCON_WEB_PORT"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			slog.Warn("invalid LOGFALCON_WEB_PORT, ignoring", "value", v, "error", err)
+		} else if n < 1 || n > 65535 {
+			slog.Warn("invalid LOGFALCON_WEB_PORT, must be 1-65535, ignoring", "value", n)
+		} else {
+			cfg.WebPort = n
+		}
+	}
+	if v, ok := os.LookupEnv("LOGFALCON_LED_BACKEND"); ok {
+		cfg.LEDBackend = v
+	}
+	if v, ok := os.LookupEnv("LOGFALCON_MIN_FREE_MB"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			slog.Warn("invalid LOGFALCON_MIN_FREE_MB, ignoring", "value", v, "error", err)
+		} else if n < 0 {
+			slog.Warn("invalid LOGFALCON_MIN_FREE_MB, must be >= 0, ignoring", "value", n)
+		} else {
+			cfg.MinFreeSpaceMB = n
+		}
+	}
+	if v, ok := os.LookupEnv("LOGFALCON_ERASE_AFTER_SYNC"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			slog.Warn("invalid LOGFALCON_ERASE_AFTER_SYNC, ignoring", "value", v, "error", err)
+		} else {
+			cfg.EraseAfterSync = b
+		}
+	}
 }

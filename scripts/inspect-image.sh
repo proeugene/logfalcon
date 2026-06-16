@@ -23,8 +23,6 @@ if ! docker info &>/dev/null; then
   exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -236,32 +234,35 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "rfkill / Wi-Fi unblock"
 
-echo "  Looking for rfkill unblock in firstboot / rc.local:"
+echo "  Looking for rfkill unblock in config-apply / rc.local:"
 for f in /mnt/root/etc/rc.local \
+          /mnt/root/etc/systemd/system/logfalcon-config-apply.service \
           /mnt/root/etc/systemd/system/logfalcon-firstboot.service \
           /mnt/root/lib/systemd/system/logfalcon-firstboot.service; do
   [ -f "$f" ] && grep -l "rfkill" "$f" 2>/dev/null && grep "rfkill" "$f" | sed 's/^/    /'
 done || true
 
 # ─────────────────────────────────────────────────────────────────────────────
-hdr "logfalcon service"
+hdr "logfalcon services"
 
-SVC=""
-for p in /mnt/root/etc/systemd/system/logfalcon.service \
-          /mnt/root/lib/systemd/system/logfalcon.service; do
-  [ -f "$p" ] && SVC="$p" && break
+for svc in logfalcon-web.service logfalcon@.service logfalcon-config-apply.service; do
+  SVC=""
+  for p in /mnt/root/etc/systemd/system/"$svc" \
+            /mnt/root/lib/systemd/system/"$svc"; do
+    [ -f "$p" ] && SVC="$p" && break
+  done
+  if [ -n "$SVC" ]; then
+    ok "$svc found"
+    grep -E "^(Description|User|Group|ExecStart|MemoryHigh|MemoryMax|ReadWritePaths|ProtectKernelTunables)" "$SVC" | sed 's/^/    /'
+  else
+    err "$svc NOT FOUND"
+  fi
 done
-if [ -n "$SVC" ]; then
-  ok "logfalcon.service found"
-  cat "$SVC" | sed 's/^/  /'
-else
-  err "logfalcon.service NOT FOUND"
-fi
 
-if systemctl --root=/mnt/root is-enabled logfalcon &>/dev/null; then
-  ok "logfalcon.service is ENABLED"
+if systemctl --root=/mnt/root is-enabled logfalcon-web.service &>/dev/null; then
+  ok "logfalcon-web.service is ENABLED"
 else
-  warn "logfalcon.service is NOT enabled"
+  err "logfalcon-web.service is NOT enabled"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -335,13 +336,22 @@ if [ -L /mnt/root/etc/systemd/system/multi-user.target.wants/wpa_supplicant.serv
   ISSUES=$((ISSUES+1))
 fi
 
-if [ -L /mnt/root/etc/systemd/system/multi-user.target.wants/userconfig.service ]; then
-  warn "WARNING: userconfig.service enabled — first boot will prompt for username on HDMI"
+if ! [ -f /mnt/boot/userconf.txt ]; then
+  warn "WARNING: userconf.txt missing from boot — headless setup may prompt for username"
   ISSUES=$((ISSUES+1))
 fi
 
-if ! [ -f /mnt/boot/userconf.txt ]; then
-  warn "WARNING: userconf.txt missing from boot — headless setup may prompt for username"
+for svc in /mnt/root/etc/systemd/system/logfalcon-web.service \
+           /mnt/root/etc/systemd/system/logfalcon@.service \
+           /mnt/root/etc/systemd/system/logfalcon-config-apply.service; do
+  if ! [ -f "$svc" ]; then
+    err "CRITICAL: $(basename "$svc") missing"
+    ISSUES=$((ISSUES+1))
+  fi
+done
+
+if ! systemctl --root=/mnt/root is-enabled logfalcon-web.service &>/dev/null; then
+  err "CRITICAL: logfalcon-web.service not enabled"
   ISSUES=$((ISSUES+1))
 fi
 
@@ -349,6 +359,7 @@ if [ $ISSUES -eq 0 ]; then
   echo -e "${GRN}  No obvious config issues found.${NC}"
 else
   echo -e "${YEL}  Found $ISSUES issue(s) — see above.${NC}"
+  exit 1
 fi
 
 INNER_EOF
@@ -359,6 +370,9 @@ hdr "Mounting image partitions and auditing"
 docker run --rm --privileged \
   -v "$IMG_FILE:/logfalcon.img:ro" \
   -v "$INNER_SCRIPT:/inner.sh:ro" \
-  debian:bookworm-slim bash -euo pipefail /inner.sh
+  debian:bookworm-slim bash -euo pipefail -c \
+  'apt-get update -qq >/dev/null &&
+   apt-get install -y -qq --no-install-recommends fdisk mount python3 systemd >/dev/null &&
+   bash -euo pipefail /inner.sh'
 
 echo -e "\n${GRN}Inspection complete.${NC}"

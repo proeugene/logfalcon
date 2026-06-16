@@ -255,3 +255,47 @@ func TestCleanupNotNeeded(t *testing.T) {
 		t.Errorf("got %d sessions, want 1", len(sessions))
 	}
 }
+
+func TestAtomicWriteNoTempFileLeak(t *testing.T) {
+	root := t.TempDir()
+	info := testFCInfo()
+
+	dir, err := MakeSessionDir(root, info)
+	if err != nil {
+		t.Fatalf("MakeSessionDir: %v", err)
+	}
+
+	err = WriteManifest(dir, info, "feedc0ffee", 512, false, false, nil)
+	if err != nil {
+		t.Fatalf("WriteManifest: %v", err)
+	}
+
+	manifestPath := filepath.Join(dir, ManifestFilename)
+	tmpPath := manifestPath + ".tmp"
+
+	// Manifest must exist.
+	if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+		t.Fatal("manifest.json missing after WriteManifest")
+	}
+
+	// Temp file must NOT exist.
+	if _, err := os.Stat(tmpPath); err == nil {
+		t.Fatal("manifest.json.tmp should not exist after successful atomic write")
+	}
+
+	// Content integrity: read back and verify.
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if m.File.SHA256 != "feedc0ffee" {
+		t.Errorf("sha256 = %q, want feedc0ffee", m.File.SHA256)
+	}
+	if m.File.Bytes != 512 {
+		t.Errorf("bytes = %d, want 512", m.File.Bytes)
+	}
+}

@@ -61,25 +61,51 @@ type Session struct {
 	Manifest   *Manifest `json:"manifest"`
 }
 
-// atomicJSONWrite writes data as indented JSON to path with fsync for durability.
+// atomicJSONWrite writes data as indented JSON to a temporary file,
+// fsyncs it to durable storage, then atomically renames over the target
+// path so that a power loss never leaves a partially-written manifest.
 func atomicJSONWrite(path string, data any) error {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal json: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+
+	tmpPath := path + ".tmp"
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
-		return fmt.Errorf("open file: %w", err)
+		return fmt.Errorf("open temp file: %w", err)
 	}
+
 	if _, err := f.Write(b); err != nil {
 		_ = f.Close()
-		return fmt.Errorf("write file: %w", err)
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("write temp file: %w", err)
 	}
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
-		return fmt.Errorf("fsync: %w", err)
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("fsync temp file: %w", err)
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("rename temp file: %w", err)
+	}
+
+	// Fsync the parent directory so the rename is durable on the filesystem.
+	// On SD cards a power loss after rename can lose the directory entry.
+	// This is a best-effort operation — on macOS directory fsync is a no-op,
+	// and when the parent directory can't be opened we ignore the error.
+	dir := filepath.Dir(path)
+	if d, err := os.Open(dir); err == nil {
+		_ = d.Sync()
+		_ = d.Close()
+	}
+	return nil
 }
 
 // MakeSessionDir creates a timestamped session directory.

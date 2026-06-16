@@ -36,13 +36,15 @@ import (
 const (
 	maxConsecutiveErrors = 5
 	erasePollInterval    = 2 * time.Second
+	maxSyncDuration      = 10 * time.Minute
+	maxFlashUsedSize     = 128 * 1024 * 1024 // 128 MB OOM safety cap
 )
 
 // SyncResult represents the outcome of a sync operation.
 type SyncResult int
 
 const (
-	ResultSuccess      SyncResult = iota
+	ResultSuccess SyncResult = iota
 	ResultAlreadyEmpty
 	ResultError
 	ResultDryRun
@@ -131,7 +133,6 @@ func SetStatusSync(state string, progress int, message string, bytesCopied, tota
 	}
 }
 
-
 // Orchestrator runs the full blackbox sync workflow.
 type Orchestrator struct {
 	Config *config.Config
@@ -162,6 +163,7 @@ func (o *Orchestrator) Run(portPath string) SyncResult {
 func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	cfg := o.Config
 	totalStarted := time.Now()
+	syncDeadline := totalStarted.Add(maxSyncDuration)
 	timings := make(map[string]float64)
 
 	// --- Step 1: Open serial port ---
@@ -227,7 +229,7 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 	SetStatus("syncing", 0, "Copying blackbox flash to the Pi SD card.")
 	streamStarted := time.Now()
 
-	result = o.readFlash(client, writer, usedSize)
+	result = o.readFlash(client, writer, usedSize, syncDeadline)
 	if result != nil {
 		return *result, nil
 	}
@@ -360,6 +362,14 @@ func (o *Orchestrator) queryFlashState(client *msp.Client) (uint32, *SyncResult)
 		return 0, &r
 	}
 
+	if summary.UsedSize > maxFlashUsedSize {
+		slog.Warn("FC flash size exceeds safety limit", "usedSize", summary.UsedSize, "limit", maxFlashUsedSize)
+		o.LED.SetState(led.Error)
+		SetStatus("error", 0, "FC flash exceeds the maximum safe size (128 MB) for this device.")
+		r := ResultError
+		return 0, &r
+	}
+
 	return summary.UsedSize, nil
 }
 
@@ -437,7 +447,7 @@ func (o *Orchestrator) checkStorageAndPrepare(fcInfo *fc.FCInfo, usedSize uint32
 }
 
 // readFlash streams flash data from the FC using pipelined reads (Step 6).
-func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWriter, usedSize uint32) *SyncResult {
+func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWriter, usedSize uint32, deadline time.Time) *SyncResult {
 	cfg := o.Config
 	var address uint32
 	consecutiveErrors := 0
@@ -469,6 +479,16 @@ func (o *Orchestrator) readFlash(client *msp.Client, writer *storage.StreamWrite
 	}
 
 	for address < usedSize {
+		// Abort if the overall sync duration has been exceeded (MSP hang guard).
+		if time.Now().After(deadline) {
+			slog.Error("sync deadline exceeded", "deadline", deadline, "elapsed", time.Since(syncStart))
+			_ = writer.Abort()
+			o.LED.SetState(led.Error)
+			SetStatus("error", 0, "Sync timed out. The MSP protocol may have hung.")
+			r := ResultError
+			return &r
+		}
+
 		chunkAddr, data, err := client.ReceiveFlashReadResponse()
 		if err != nil {
 			consecutiveErrors++

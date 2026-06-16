@@ -160,6 +160,74 @@ func TestDecodeV1ZeroLengthPayload(t *testing.T) {
 	}
 }
 
+func FuzzFrameDecoder(f *testing.F) {
+	// Seed corpus: valid V1 frame
+	f.Add(toResponse(EncodeV1(MSPAPIVersion, []byte{0x01, 0x02})))
+	// Seed corpus: valid V2 frame
+	f.Add(toResponse(EncodeV2(0x0047, []byte{0x10, 0x20})))
+	// Seed corpus: zero-length V1
+	f.Add(toResponse(EncodeV1(MSPBoardInfo, nil)))
+	// Seed corpus: zero-length V2
+	f.Add(toResponse(EncodeV2(0x0047, nil)))
+	// Seed corpus: concatenated V1 + V2
+	f1 := toResponse(EncodeV1(MSPAPIVersion, []byte{0xAA}))
+	f2 := toResponse(EncodeV2(0x0047, []byte{0xBB}))
+	f.Add(append(f1, f2...))
+	// Seed corpus: garbage only
+	f.Add([]byte{0xFF, 0x00, '$', 'Q', 0x99, 0xAB})
+	// Seed corpus: partial V1 header only
+	f.Add([]byte{'$', 'M'})
+	// Seed corpus: V1 with corrupt checksum
+	corrupt := toResponse(EncodeV1(MSPAPIVersion, []byte{0x01}))
+	corrupt[len(corrupt)-1] ^= 0xFF
+	f.Add(corrupt)
+	// Seed corpus: V2 with corrupt CRC
+	corrupt2 := toResponse(EncodeV2(0x0047, []byte{0x10}))
+	corrupt2[len(corrupt2)-1] ^= 0xFF
+	f.Add(corrupt2)
+	// Seed corpus: V1 error direction ('!')
+	errV1 := EncodeV1(MSPAPIVersion, []byte{0x01})
+	errV1[2] = '!'
+	f.Add(errV1)
+	// Seed corpus: V2 error direction ('!')
+	errV2 := EncodeV2(0x0047, nil)
+	errV2[2] = '!'
+	f.Add(errV2)
+	// Seed corpus: V1 max-size payload (255 bytes)
+	maxV1Payload := make([]byte, 255)
+	for i := range maxV1Payload {
+		maxV1Payload[i] = byte(i)
+	}
+	f.Add(toResponse(EncodeV1(MSPFCVersion, maxV1Payload)))
+	// Seed corpus: V1 + garbage + V2 concatenated
+	cv1 := toResponse(EncodeV1(MSPFCVersion, []byte{0x04, 0x05}))
+	cgarbage := []byte{0xFF, '$', 'Q', 0xAB, 0xCD}
+	cv2 := toResponse(EncodeV2(0x0047, []byte{0x10, 0x20}))
+	f.Add(append(append(cv1, cgarbage...), cv2...))
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		dec := NewFrameDecoder()
+		dec.Feed(data)
+
+		for _, frame := range dec.Frames {
+			if frame.Version != 1 && frame.Version != 2 {
+				t.Errorf("decoded frame has invalid version %d", frame.Version)
+			}
+			if frame.Direction != '<' && frame.Direction != '>' && frame.Direction != '!' {
+				t.Errorf("decoded frame has invalid direction 0x%02x", frame.Direction)
+			}
+			if len(frame.Payload) > 65535 {
+				t.Errorf("decoded payload exceeds max size: %d", len(frame.Payload))
+			}
+		}
+
+		// Decoder must always be in a valid state after processing.
+		if dec.state < stateIdle || dec.state > stateV2Checksum {
+			t.Errorf("decoder in invalid state %d after feed", dec.state)
+		}
+	})
+}
+
 func TestDecodeFragmented(t *testing.T) {
 	frame := toResponse(EncodeV1(MSPAPIVersion, []byte{0x01, 0x02, 0x03}))
 	dec := NewFrameDecoder()

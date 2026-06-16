@@ -26,5 +26,21 @@ RestartSec=5
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 
+# Resource limits — cgroup v2 memory guard (Pi Zero W has 512 MB RAM)
+MemoryHigh=300M
+MemoryMax=350M
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+# Filesystem access — log storage, config, and hostapd settings
+ReadWritePaths=/mnt/logfalcon-logs /etc/logfalcon /etc/hostapd
+
 [Install]
 WantedBy=multi-user.target

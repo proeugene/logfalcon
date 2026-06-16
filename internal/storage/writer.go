@@ -11,16 +11,20 @@ import (
 	"path/filepath"
 )
 
-const bufSize = 256 * 1024
+const (
+	bufSize       = 256 * 1024
+	syncThreshold = 1 * 1024 * 1024 // 1 MB periodic fsync to limit SD corruption
+)
 
 // StreamWriter writes data to a file with buffering, tracks bytes written,
 // and computes a running SHA-256 hash.
 type StreamWriter struct {
-	path         string
-	file         *os.File
-	buf          *bufio.Writer
-	hasher       hash.Hash
-	bytesWritten int64
+	path           string
+	file           *os.File
+	buf            *bufio.Writer
+	hasher         hash.Hash
+	bytesWritten   int64
+	lastSyncOffset int64
 }
 
 // NewStreamWriter creates parent directories if needed, opens the file for
@@ -43,11 +47,23 @@ func NewStreamWriter(path string) (*StreamWriter, error) {
 }
 
 // Write implements io.Writer. Every byte is hashed and counted.
+// When accumulated unwritten bytes exceed syncThreshold the buffer is
+// flushed and the file is fsynced to limit power-loss data corruption.
 func (w *StreamWriter) Write(data []byte) (int, error) {
 	n, err := w.buf.Write(data)
 	if n > 0 {
 		w.hasher.Write(data[:n])
 		w.bytesWritten += int64(n)
+
+		if w.bytesWritten-w.lastSyncOffset >= syncThreshold {
+			if flushErr := w.buf.Flush(); flushErr != nil {
+				return n, flushErr
+			}
+			if syncErr := w.file.Sync(); syncErr != nil {
+				return n, syncErr
+			}
+			w.lastSyncOffset = w.bytesWritten
+		}
 	}
 	return n, err
 }

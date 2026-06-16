@@ -124,6 +124,87 @@ hotspot_ssid = "CustomSSID"
 	assertEqual(t, "IdleShutdownMinutes", cfg.IdleShutdownMinutes, 0)
 }
 
+func TestEnvOverrideFile(t *testing.T) {
+	content := `storage_path = "/tmp/logs"
+web_port = 8080
+led_backend = "gpio"
+min_free_space_mb = 500
+erase_after_sync = false`
+	path := writeTempTOML(t, content)
+
+	t.Setenv("LOGFALCON_STORAGE_PATH", "/env/storage")
+	t.Setenv("LOGFALCON_WEB_PORT", "9090")
+	t.Setenv("LOGFALCON_LED_BACKEND", "ws2812")
+	t.Setenv("LOGFALCON_MIN_FREE_MB", "999")
+	t.Setenv("LOGFALCON_ERASE_AFTER_SYNC", "true")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	assertEqual(t, "StoragePath (env)", cfg.StoragePath, "/env/storage")
+	assertEqual(t, "WebPort (env)", cfg.WebPort, 9090)
+	assertEqual(t, "LEDBackend (env)", cfg.LEDBackend, "ws2812")
+	assertEqual(t, "MinFreeSpaceMB (env)", cfg.MinFreeSpaceMB, 999)
+	assertEqualBool(t, "EraseAfterSync (env)", cfg.EraseAfterSync, true)
+}
+
+func TestEnvOverrideDefault(t *testing.T) {
+	t.Setenv("LOGFALCON_STORAGE_PATH", "/env/default")
+	t.Setenv("LOGFALCON_WEB_PORT", "3000")
+	t.Setenv("LOGFALCON_LED_BACKEND", "none")
+	t.Setenv("LOGFALCON_MIN_FREE_MB", "123")
+	t.Setenv("LOGFALCON_ERASE_AFTER_SYNC", "false")
+
+	cfg, err := Load("/nonexistent/path/config.toml")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	assertEqual(t, "StoragePath", cfg.StoragePath, "/env/default")
+	assertEqual(t, "WebPort", cfg.WebPort, 3000)
+	assertEqual(t, "LEDBackend", cfg.LEDBackend, "none")
+	assertEqual(t, "MinFreeSpaceMB", cfg.MinFreeSpaceMB, 123)
+	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, false)
+}
+
+func TestEnvInvalidValues(t *testing.T) {
+	t.Setenv("LOGFALCON_WEB_PORT", "not-a-number")
+	t.Setenv("LOGFALCON_MIN_FREE_MB", "also-bad")
+	t.Setenv("LOGFALCON_ERASE_AFTER_SYNC", "nope")
+
+	cfg, err := Load("/nonexistent/path/config.toml")
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	expected := Default()
+	assertEqual(t, "WebPort (invalid env)", cfg.WebPort, expected.WebPort)
+	assertEqual(t, "MinFreeSpaceMB (invalid env)", cfg.MinFreeSpaceMB, expected.MinFreeSpaceMB)
+	assertEqualBool(t, "EraseAfterSync (invalid env)", cfg.EraseAfterSync, expected.EraseAfterSync)
+}
+
+func TestEnvUnsetDoesNotOverride(t *testing.T) {
+	content := `storage_path = "/tmp/logs"
+web_port = 8080
+led_backend = "gpio"
+min_free_space_mb = 500
+erase_after_sync = false`
+	path := writeTempTOML(t, content)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	assertEqual(t, "StoragePath", cfg.StoragePath, "/tmp/logs")
+	assertEqual(t, "WebPort", cfg.WebPort, 8080)
+	assertEqual(t, "LEDBackend", cfg.LEDBackend, "gpio")
+	assertEqual(t, "MinFreeSpaceMB", cfg.MinFreeSpaceMB, 500)
+	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, false)
+}
+
 // --- helpers ---
 
 func writeTempTOML(t *testing.T, content string) string {
@@ -155,4 +236,85 @@ func assertEqualBool(t *testing.T, field string, got, want bool) {
 	if got != want {
 		t.Errorf("%s: got %v, want %v", field, got, want)
 	}
+}
+
+func TestEnvRangeValidation(t *testing.T) {
+	// Port out of range — should preserve default (80).
+	t.Run("port_zero", func(t *testing.T) {
+		t.Setenv("LOGFALCON_WEB_PORT", "0")
+		cfg, err := Load("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.WebPort != 80 {
+			t.Errorf("WebPort = %d, want 80 (default preserved)", cfg.WebPort)
+		}
+	})
+
+	t.Run("port_too_high", func(t *testing.T) {
+		t.Setenv("LOGFALCON_WEB_PORT", "65536")
+		cfg, err := Load("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.WebPort != 80 {
+			t.Errorf("WebPort = %d, want 80 (default preserved)", cfg.WebPort)
+		}
+	})
+
+	t.Run("port_negative", func(t *testing.T) {
+		t.Setenv("LOGFALCON_WEB_PORT", "-1")
+		cfg, err := Load("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.WebPort != 80 {
+			t.Errorf("WebPort = %d, want 80 (default preserved)", cfg.WebPort)
+		}
+	})
+
+	t.Run("min_free_negative", func(t *testing.T) {
+		t.Setenv("LOGFALCON_MIN_FREE_MB", "-500")
+		cfg, err := Load("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.MinFreeSpaceMB != 200 {
+			t.Errorf("MinFreeSpaceMB = %d, want 200 (default preserved)", cfg.MinFreeSpaceMB)
+		}
+	})
+
+	// Edge: valid boundaries must be accepted.
+	t.Run("port_min_valid", func(t *testing.T) {
+		t.Setenv("LOGFALCON_WEB_PORT", "1")
+		cfg, err := Load("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.WebPort != 1 {
+			t.Errorf("WebPort = %d, want 1", cfg.WebPort)
+		}
+	})
+
+	t.Run("port_max_valid", func(t *testing.T) {
+		t.Setenv("LOGFALCON_WEB_PORT", "65535")
+		cfg, err := Load("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.WebPort != 65535 {
+			t.Errorf("WebPort = %d, want 65535", cfg.WebPort)
+		}
+	})
+
+	t.Run("min_free_zero_valid", func(t *testing.T) {
+		t.Setenv("LOGFALCON_MIN_FREE_MB", "0")
+		cfg, err := Load("/nonexistent/path/config.toml")
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if cfg.MinFreeSpaceMB != 0 {
+			t.Errorf("MinFreeSpaceMB = %d, want 0", cfg.MinFreeSpaceMB)
+		}
+	})
 }

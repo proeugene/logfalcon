@@ -2,3 +2,5 @@ hostapd
 dnsmasq
 avahi-daemon
 rfkill
+polkitd
+iw

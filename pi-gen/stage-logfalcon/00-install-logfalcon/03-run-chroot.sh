@@ -5,6 +5,14 @@
 echo "=== [logfalcon] Pre-cleanup disk usage ==="
 df -h /
 
+# ── Journald size limits (protect SD card from log accumulation) ─────────────
+mkdir -p /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/logfalcon.conf <<EOF
+[Journal]
+SystemMaxUse=50M
+MaxRetentionSec=1week
+EOF
+
 # ---- 1. Remove appliance-irrelevant packages --------------------------------
 # nfs-common, triggerhappy, lua5.1 come from stage2 but serve no purpose here.
 apt-get purge -y \

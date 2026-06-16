@@ -70,7 +70,7 @@ info "Downloaded successfully."
 # --- Install packages --------------------------------------------------------
 info "Installing required packages..."
 apt-get update -qq
-apt-get install -y -qq hostapd dnsmasq avahi-daemon rfkill >/dev/null 2>&1
+apt-get install -y -qq hostapd dnsmasq avahi-daemon rfkill polkitd iw >/dev/null 2>&1
 info "Packages installed."
 
 # --- Create system user ------------------------------------------------------
@@ -137,49 +137,155 @@ EOF
     info "Created $BOOT_DIR/logfalcon-config.txt (edit to change Wi-Fi name/password)."
 fi
 
-# --- Install firstboot script ------------------------------------------------
-cat > "$INSTALL_DIR/firstboot.sh" <<'SCRIPTEOF'
+# --- Install config-apply script (boot-time SSID/password applicator) ---------
+info "Installing config-apply.sh..."
+cat > "$INSTALL_DIR/config-apply.sh" <<'CONFIGAPPLYEOF'
 #!/usr/bin/env bash
+# LogFalcon — Boot-time config applicator
+# Reads /boot/firmware/logfalcon-config.txt or /boot/logfalcon-config.txt
+# and updates hostapd + app config.
+# Runs on every boot so users can edit config.txt and reboot to apply changes.
+# Install to: /opt/logfalcon/config-apply.sh
+
 set -euo pipefail
 
-CONFIG_FILE="/boot/firmware/logfalcon-config.txt"
-[[ -f "$CONFIG_FILE" ]] || CONFIG_FILE="/boot/logfalcon-config.txt"
 HOSTAPD_CONF="/etc/hostapd/hostapd.conf"
 LOGFALCON_CONF="/etc/logfalcon/logfalcon.toml"
-TAG="logfalcon-firstboot"
+STATE_FILE="/var/lib/logfalcon/config-applied-hash"
+TAG="logfalcon-config-apply"
 
 log() { logger -t "$TAG" "$*"; }
-escape_sed() { printf '%s' "$1" | sed -e 's/[\/&]/\\&/g'; }
+escape_sed() { printf '%s' "$1" | sed -e 's/[\/&\\]/\\&/g'; }
+toml_escape() {
+    local value=$1
+    value=${value//\\/\\\\}
+    value=${value//\"/\\\"}
+    printf '%s' "$value"
+}
 
-[[ -f "$CONFIG_FILE" ]] && [[ -r "$CONFIG_FILE" ]] || exit 0
+config_file() {
+    if [[ -f /boot/firmware/logfalcon-config.txt ]]; then
+        printf '%s\n' /boot/firmware/logfalcon-config.txt
+    elif [[ -f /boot/logfalcon-config.txt ]]; then
+        printf '%s\n' /boot/logfalcon-config.txt
+    else
+        printf '%s\n' /boot/firmware/logfalcon-config.txt
+    fi
+}
 
-SSID="" ; PASSWORD=""
+CONFIG_FILE="$(config_file)"
+
+# Compute a hash of the current config file for change detection
+config_hash() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        sha256sum "$CONFIG_FILE" | awk '{print $1}'
+    else
+        echo "none"
+    fi
+}
+
+# Check if config has already been applied (no-op fast path)
+APPLIED_HASH=""
+if [[ -f "$STATE_FILE" ]]; then
+    APPLIED_HASH="$(cat "$STATE_FILE")"
+fi
+CURRENT_HASH="$(config_hash)"
+
+if [[ "$APPLIED_HASH" == "$CURRENT_HASH" ]]; then
+    log "Config unchanged (hash=$CURRENT_HASH) — skipping."
+    exit 0
+fi
+
+# ── Parse config file ───────────────────────────────────────────────────────
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    log "No config file at $CONFIG_FILE — skipping."
+    exit 0
+fi
+
+if [[ ! -r "$CONFIG_FILE" ]]; then
+    log "Cannot read $CONFIG_FILE — skipping."
+    exit 0
+fi
+
+SSID=""
+PASSWORD=""
+
 while IFS= read -r line || [[ -n "$line" ]]; do
-  [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-  case "$line" in
-    SSID=*)     SSID="${line#SSID=}" ;;
-    PASSWORD=*) PASSWORD="${line#PASSWORD=}" ;;
-  esac
+    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+    case "$line" in
+        SSID=*)     SSID="${line#SSID=}" ;;
+        PASSWORD=*) PASSWORD="${line#PASSWORD=}" ;;
+    esac
 done < "$CONFIG_FILE"
 
-SSID="$(echo "$SSID" | xargs)" ; PASSWORD="$(echo "$PASSWORD" | xargs)"
-[[ -z "$SSID" || -z "$PASSWORD" ]] && exit 0
-[[ ${#SSID} -ge 1 && ${#SSID} -le 32 ]] || exit 0
-[[ ${#PASSWORD} -ge 8 && ${#PASSWORD} -le 63 ]] || exit 0
+# Trim leading/trailing whitespace
+SSID="$(echo "$SSID" | xargs)"
+PASSWORD="$(echo "$PASSWORD" | xargs)"
 
-SSID_E="$(escape_sed "$SSID")" ; PASS_E="$(escape_sed "$PASSWORD")"
+if [[ -z "$SSID" || -z "$PASSWORD" ]]; then
+    log "SSID or PASSWORD not found in $CONFIG_FILE — skipping."
+    exit 0
+fi
 
-[[ -f "$HOSTAPD_CONF" ]] && {
-  sed -i "s/^ssid=.*/ssid=$SSID_E/" "$HOSTAPD_CONF"
-  sed -i "s/^wpa_passphrase=.*/wpa_passphrase=$PASS_E/" "$HOSTAPD_CONF"
-}
-[[ -f "$LOGFALCON_CONF" ]] && {
-  sed -i "s/^hotspot_ssid = .*/hotspot_ssid = \"$SSID_E\"/" "$LOGFALCON_CONF"
-  sed -i "s/^hotspot_password = .*/hotspot_password = \"$PASS_E\"/" "$LOGFALCON_CONF"
-}
-log "Applied config: SSID='$SSID'"
-SCRIPTEOF
-chmod +x "$INSTALL_DIR/firstboot.sh"
+# Validate SSID: 1-32 characters
+if [[ ${#SSID} -lt 1 || ${#SSID} -gt 32 ]]; then
+    log "ERROR: SSID must be 1-32 characters (got ${#SSID}) — skipping."
+    exit 0
+fi
+
+# Validate PASSWORD: 8-63 characters (WPA2 requirement)
+if [[ ${#PASSWORD} -lt 8 || ${#PASSWORD} -gt 63 ]]; then
+    log "ERROR: PASSWORD must be 8-63 characters (got ${#PASSWORD}) — skipping."
+    exit 0
+fi
+
+if printf '%s' "$SSID$PASSWORD" | LC_ALL=C grep -q '[^[:print:]]'; then
+    log "ERROR: SSID or PASSWORD contained non-printable characters — skipping."
+    exit 0
+fi
+
+SSID_ESCAPED="$(escape_sed "$SSID")"
+PASSWORD_ESCAPED="$(escape_sed "$PASSWORD")"
+SSID_TOML_ESCAPED="$(toml_escape "$SSID")"
+PASSWORD_TOML_ESCAPED="$(toml_escape "$PASSWORD")"
+SSID_TOML_SED="$(escape_sed "$SSID_TOML_ESCAPED")"
+PASSWORD_TOML_SED="$(escape_sed "$PASSWORD_TOML_ESCAPED")"
+
+log "Applying config change: SSID='$SSID'"
+
+# ── Update hostapd.conf ─────────────────────────────────────────────────────
+if [[ -f "$HOSTAPD_CONF" ]]; then
+    sed -i "s/^ssid=.*/ssid=$SSID_ESCAPED/" "$HOSTAPD_CONF"
+    sed -i "s/^wpa_passphrase=.*/wpa_passphrase=$PASSWORD_ESCAPED/" "$HOSTAPD_CONF"
+    log "Updated $HOSTAPD_CONF"
+else
+    log "WARNING: $HOSTAPD_CONF not found — skipped hostapd update."
+fi
+
+# ── Update logfalcon.toml ───────────────────────────────────────────────────
+if [[ -f "$LOGFALCON_CONF" ]]; then
+    sed -i "s/^hotspot_ssid = .*/hotspot_ssid = \"$SSID_TOML_SED\"/" "$LOGFALCON_CONF"
+    sed -i "s/^hotspot_password = .*/hotspot_password = \"$PASSWORD_TOML_SED\"/" "$LOGFALCON_CONF"
+    log "Updated $LOGFALCON_CONF"
+else
+    log "WARNING: $LOGFALCON_CONF not found — skipped logfalcon config update."
+fi
+
+# ── Record applied hash for next-boot comparison ────────────────────────────
+mkdir -p "$(dirname "$STATE_FILE")"
+echo "$CURRENT_HASH" > "$STATE_FILE"
+
+log "Config applied successfully (hash=$CURRENT_HASH)."
+
+# ── Restart dependent services to pick up new config ────────────────────────
+# Only restart if the services are running (avoid starting them if they failed)
+if systemctl is-active --quiet hostapd; then
+    systemctl reload hostapd 2>/dev/null || systemctl restart hostapd
+    log "Restarted hostapd to apply new SSID/passphrase."
+fi
+CONFIGAPPLYEOF
+chmod +x "$INSTALL_DIR/config-apply.sh"
+mkdir -p /var/lib/logfalcon
 
 # --- Install LED scripts -----------------------------------------------------
 cat > "$INSTALL_DIR/boot-led.sh" <<'SCRIPTEOF'
@@ -211,10 +317,22 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="0483", ATTRS{idProduct}!="df11", KERNEL=="tt
 EOF
 udevadm control --reload-rules 2>/dev/null || true
 
+# --- Install polkit rule (allow bbsyncer to restart hostapd) -----------------
+mkdir -p /etc/polkit-1/rules.d
+cat > /etc/polkit-1/rules.d/50-logfalcon-hostapd.rules <<'EOF'
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "hostapd.service" &&
+        subject.user == "bbsyncer") {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
 # --- Install systemd units ---------------------------------------------------
 cat > /etc/systemd/system/logfalcon@.service <<'EOF'
 [Unit]
-Description=LogFalcon Sync (%I)
+Description=LogFalcon (%I)
 Documentation=https://github.com/proeugene/logfalcon
 BindsTo=dev-%i.device
 After=dev-%i.device network.target
@@ -231,8 +349,17 @@ ExecStart=/opt/logfalcon/logfalcon --port /dev/%I
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=logfalcon
+MemoryHigh=300M
+MemoryMax=350M
 TimeoutStartSec=600
 TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/mnt/logfalcon-logs /etc/logfalcon /sys/class/leds
 ExecStopPost=+/usr/bin/systemctl start logfalcon-ready-led.service
 Restart=no
 
@@ -259,21 +386,47 @@ Restart=always
 RestartSec=5
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+MemoryHigh=300M
+MemoryMax=350M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/mnt/logfalcon-logs /etc/logfalcon /etc/hostapd
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-cat > /etc/systemd/system/logfalcon-firstboot.service <<'EOF'
+cat > /etc/systemd/system/logfalcon-config-apply.service <<'EOF'
 [Unit]
-Description=LogFalcon Boot Config
+Description=LogFalcon Config Apply
 After=local-fs.target
 Before=hostapd.service logfalcon-web.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/opt/logfalcon/firstboot.sh
+ExecStart=/opt/logfalcon/config-apply.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat > /etc/systemd/system/logfalcon-wifi-init.service <<'EOF'
+[Unit]
+Description=LogFalcon Wi-Fi regulatory domain and rfkill init
+Before=hostapd.service dnsmasq.service systemd-networkd.service
+After=sys-subsystem-net-devices-wlan0.device
+Requires=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'rfkill unblock all; iw reg set US; sleep 1'
 
 [Install]
 WantedBy=multi-user.target
@@ -360,7 +513,16 @@ max_num_sta=8
 country_code=US
 ieee80211d=1
 HAPEOF
+# Allow bbsyncer (web server) to rewrite hostapd.conf for settings save
+chown bbsyncer:bbsyncer /etc/hostapd/hostapd.conf
 sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd 2>/dev/null || true
+
+# Keep Bookworm's Wi-Fi client managers off the AP interface.
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/logfalcon-unmanaged.conf <<'NMEOF'
+[keyfile]
+unmanaged-devices=interface-name:wlan0
+NMEOF
 
 # dnsmasq
 cat > /etc/dnsmasq.d/logfalcon.conf <<DNSEOF
@@ -372,11 +534,52 @@ address=/#/${HOTSPOT_IP}
 DNSEOF
 grep -q "^no-resolv" /etc/dnsmasq.conf 2>/dev/null || echo "no-resolv" >> /etc/dnsmasq.conf
 
+# dnsmasq and hostapd should wait until wlan0 exists and Wi-Fi init has run.
+mkdir -p /etc/systemd/system/dnsmasq.service.d
+cat > /etc/systemd/system/dnsmasq.service.d/wait-for-wlan0.conf <<'EOF'
+[Unit]
+After=sys-subsystem-net-devices-wlan0.device network-online.target logfalcon-wifi-init.service
+Requires=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Restart=on-failure
+RestartSec=3
+EOF
+
+mkdir -p /etc/systemd/system/hostapd.service.d
+cat > /etc/systemd/system/hostapd.service.d/wait-for-wlan0.conf <<'EOF'
+[Unit]
+After=sys-subsystem-net-devices-wlan0.device logfalcon-wifi-init.service
+Requires=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Restart=on-failure
+RestartSec=3
+EOF
+
 # avahi mDNS
 sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
 
-# Unblock WiFi
+# Wi-Fi regulatory domain + rfkill for AP mode.
+mkdir -p /etc/wpa_supplicant
+cat > /etc/wpa_supplicant/wpa_supplicant.conf <<'EOF'
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+EOF
+if [[ -f /etc/default/crda ]]; then
+    sed -i 's/^REGDOMAIN=.*/REGDOMAIN=US/' /etc/default/crda
+    grep -q "^REGDOMAIN=" /etc/default/crda || echo "REGDOMAIN=US" >> /etc/default/crda
+fi
+
 rfkill unblock wlan 2>/dev/null || true
+
+# This is an AP-only appliance; client-mode managers fight hostapd for wlan0.
+systemctl mask wpa_supplicant.service 2>/dev/null || true
+systemctl mask wpa_supplicant@wlan0.service 2>/dev/null || true
+systemctl mask NetworkManager.service 2>/dev/null || true
+systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
+systemctl mask ModemManager.service 2>/dev/null || true
 
 info "Hotspot configured (SSID: LogFalcon, Password: fpvpilot)."
 
@@ -385,7 +588,12 @@ info "Enabling services..."
 systemctl daemon-reload
 
 systemctl enable logfalcon-web.service
-systemctl enable logfalcon-firstboot.service
+if [[ -x "$INSTALL_DIR/config-apply.sh" ]]; then
+    systemctl enable logfalcon-config-apply.service
+else
+    warn "config-apply.sh not found — skipping logfalcon-config-apply.service"
+fi
+systemctl enable logfalcon-wifi-init.service
 systemctl enable logfalcon-boot-led.service
 systemctl enable logfalcon-ready-led.service
 systemctl enable hostapd

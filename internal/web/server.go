@@ -59,7 +59,7 @@ var captivePortalPaths = map[string]struct {
 	"/generate_204": {204, "", "text/plain"},
 	"/gen_204":      {204, "", "text/plain"},
 	// Windows NCSI
-	"/ncsi.txt":      {200, "Microsoft NCSI", "text/plain"},
+	"/ncsi.txt":        {200, "Microsoft NCSI", "text/plain"},
 	"/connecttest.txt": {200, "Microsoft Connect Test", "text/plain"},
 }
 
@@ -77,6 +77,8 @@ type Server struct {
 	}
 	lastActivity     time.Time
 	lastActivityLock gosync.Mutex
+	lastThermalLog   time.Time
+	thermalLogMu     gosync.Mutex
 }
 
 // NewServer creates a configured Server with all routes registered.
@@ -88,11 +90,11 @@ func NewServer(storagePath string, cfg *config.Config) *Server {
 	}
 
 	s := &Server{
-		storagePath: storagePath,
-		config:      cfg,
-		csrfToken:   hex.EncodeToString(token),
-		mux:         http.NewServeMux(),
-		startedAt:   time.Now(),
+		storagePath:  storagePath,
+		config:       cfg,
+		csrfToken:    hex.EncodeToString(token),
+		mux:          http.NewServeMux(),
+		startedAt:    time.Now(),
 		lastActivity: time.Now(),
 	}
 
@@ -186,7 +188,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Warn("disk stats", "error", err)
 	}
-	freeMB, _ = util.FreeMB(s.storagePath)
+	freeMB = freeGB * 1024
 
 	totalGB := usedGB + freeGB
 	pct := 0
@@ -291,14 +293,28 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	status := lfSync.GetStatus()
 	sessions := s.getSessions()
 
-	var usedGB, freeGB, freeMB float64
+	var usedGB, freeGB float64
 	usedGB, freeGB, err := util.UsedAndFreeGB(s.storagePath)
 	if err != nil {
 		slog.Warn("disk stats", "error", err)
 	}
-	freeMB, _ = util.FreeMB(s.storagePath)
+	freeMB := freeGB * 1024
 
 	hostapd := readHostapdConfig()
+
+	var thermalTemp float64
+	thermalTemp, err = util.CPUTemperature()
+	if err != nil {
+		s.logThermalOnce("thermal", "error", err)
+	}
+	thermalWarning := thermalTemp > util.ThermalWarningThreshold
+	if thermalWarning {
+		s.logThermalOnce("thermal",
+			"temp_c", round1(thermalTemp),
+			"threshold_c", util.ThermalWarningThreshold,
+			"message", "CPU temperature exceeds 80°C — possible throttling",
+		)
+	}
 
 	payload := map[string]any{
 		"ok":         status.State != "error",
@@ -310,16 +326,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		},
 		"session_count": len(sessions),
 		"storage": map[string]any{
-			"used_gb":                   round2(usedGB),
-			"free_gb":                   round2(freeGB),
-			"free_mb":                   round1(freeMB),
+			"used_gb":                  round2(usedGB),
+			"free_gb":                  round2(freeGB),
+			"free_mb":                  round1(freeMB),
 			"reserve_mb":               s.config.MinFreeSpaceMB,
 			"storage_pressure_cleanup": s.config.StoragePressureCleanup,
 			"low_space":                freeMB < float64(s.config.MinFreeSpaceMB),
 		},
 		"hotspot": map[string]any{
-			"ssid":                      hostapd["ssid"],
-			"default_password_in_use":   hostapd["wpa_passphrase"] == defaultHotspotPassword,
+			"ssid":                    hostapd["ssid"],
+			"default_password_in_use": hostapd["wpa_passphrase"] == defaultHotspotPassword,
+		},
+		"thermal": map[string]any{
+			"temp_c":      round1(thermalTemp),
+			"warning":     thermalWarning,
+			"threshold_c": util.ThermalWarningThreshold,
 		},
 	}
 	s.sendJSON(w, r, http.StatusOK, payload)
@@ -767,6 +788,9 @@ func rewritePrefixedLines(path string, replacements map[string]string) bool {
 	text := string(data)
 	trailingNL := strings.HasSuffix(text, "\n")
 	lines := strings.Split(text, "\n")
+	if trailingNL {
+		lines = lines[:len(lines)-1]
+	}
 	remaining := make(map[string]string)
 	for k, v := range replacements {
 		remaining[k] = v
@@ -796,11 +820,58 @@ func rewritePrefixedLines(path string, replacements map[string]string) bool {
 	if trailingNL && !strings.HasSuffix(out, "\n") {
 		out += "\n"
 	}
-	if err := os.WriteFile(path, []byte(out), 0o644); err != nil {
+
+	info, err := os.Stat(path)
+	if err != nil {
+		slog.Warn("could not stat file", "path", path, "error", err)
+		return false
+	}
+	if err := atomicWriteFile(path, []byte(out), info.Mode().Perm()); err != nil {
 		slog.Warn("could not write file", "path", path, "error", err)
 		return false
 	}
 	return true
+}
+
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	cleanup = false
+
+	if dirFile, err := os.Open(dir); err == nil {
+		_ = dirFile.Sync()
+		_ = dirFile.Close()
+	}
+	return nil
 }
 
 func validateHotspotValue(value string, min, max int, label string) string {
@@ -825,4 +896,14 @@ func round2(f float64) float64 {
 	return float64(int(f*100+0.5)) / 100
 }
 
-
+// logThermalOnce rate-limits thermal-related warnings to once per 10 minutes.
+func (s *Server) logThermalOnce(msg string, args ...any) {
+	s.thermalLogMu.Lock()
+	if time.Since(s.lastThermalLog) < 10*time.Minute {
+		s.thermalLogMu.Unlock()
+		return
+	}
+	s.lastThermalLog = time.Now()
+	s.thermalLogMu.Unlock()
+	slog.Warn(msg, args...)
+}

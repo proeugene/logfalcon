@@ -53,6 +53,9 @@ func TestHealthEndpoint(t *testing.T) {
 	if _, ok := body["storage"]; !ok {
 		t.Error("missing 'storage' field")
 	}
+	if _, ok := body["thermal"]; !ok {
+		t.Error("missing 'thermal' field")
+	}
 }
 
 func TestSessionsEndpoint(t *testing.T) {
@@ -200,6 +203,57 @@ func TestIndexPage(t *testing.T) {
 	body := w.Body.String()
 	if !containsStr(body, "LogFalcon") {
 		t.Error("index page should contain 'LogFalcon'")
+	}
+}
+
+func TestRewritePrefixedLinesAtomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hostapd.conf")
+	original := "interface=wlan0\n  ssid=OldName\nwpa_passphrase=oldpassword\n"
+	if err := os.WriteFile(path, []byte(original), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	ok := rewritePrefixedLines(path, map[string]string{
+		"ssid=":           "ssid=NewName",
+		"wpa_passphrase=": "wpa_passphrase=newpassword",
+		"channel=":        "channel=6",
+	})
+	if !ok {
+		t.Fatal("rewritePrefixedLines returned false")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "interface=wlan0\n  ssid=NewName\nwpa_passphrase=newpassword\nchannel=6\n"
+	if string(data) != want {
+		t.Fatalf("unexpected file content:\nwant %q\n got %q", want, string(data))
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o640 {
+		t.Fatalf("expected mode 0640, got %v", got)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != "hostapd.conf" {
+			t.Fatalf("unexpected temp file left behind: %s", entry.Name())
+		}
+	}
+}
+
+func TestRewritePrefixedLinesMissingFile(t *testing.T) {
+	if rewritePrefixedLines(filepath.Join(t.TempDir(), "missing.conf"), map[string]string{"ssid=": "ssid=x"}) {
+		t.Fatal("expected missing file rewrite to fail")
 	}
 }
 

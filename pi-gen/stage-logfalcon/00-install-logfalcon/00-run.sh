@@ -26,9 +26,14 @@ rsync -a --exclude='.git' --exclude='pi-gen' \
 # Copy systemd units
 install -m 644 "${REPO_ROOT}/system/logfalcon@.service" "${ROOTFS_DIR}/etc/systemd/system/"
 install -m 644 "${REPO_ROOT}/system/logfalcon-web.service" "${ROOTFS_DIR}/etc/systemd/system/"
-install -m 644 "${REPO_ROOT}/system/logfalcon-firstboot.service" "${ROOTFS_DIR}/etc/systemd/system/"
+install -m 644 "${REPO_ROOT}/system/logfalcon-config-apply.service" "${ROOTFS_DIR}/etc/systemd/system/"
+install -m 644 "${REPO_ROOT}/system/logfalcon-wifi-init.service" "${ROOTFS_DIR}/etc/systemd/system/"
 install -m 644 "${REPO_ROOT}/system/logfalcon-boot-led.service" "${ROOTFS_DIR}/etc/systemd/system/"
 install -m 644 "${REPO_ROOT}/system/logfalcon-ready-led.service" "${ROOTFS_DIR}/etc/systemd/system/"
+
+# Copy journald drop-in (SD card protection)
+mkdir -p "${ROOTFS_DIR}/etc/systemd/journald.conf.d"
+install -m 644 "${REPO_ROOT}/system/journald.conf" "${ROOTFS_DIR}/etc/systemd/journald.conf.d/logfalcon.conf"
 
 # Copy boot LED heartbeat script
 install -m 755 "${REPO_ROOT}/system/logfalcon-boot-led.sh" "${ROOTFS_DIR}/opt/logfalcon/boot-led.sh"
@@ -36,8 +41,26 @@ install -m 755 "${REPO_ROOT}/system/logfalcon-boot-led.sh" "${ROOTFS_DIR}/opt/lo
 # Copy ready LED script
 install -m 755 "${REPO_ROOT}/system/logfalcon-ready-led.sh" "${ROOTFS_DIR}/opt/logfalcon/ready-led.sh"
 
+# Copy config-apply script (replaces firstboot.sh)
+install -m 755 "${REPO_ROOT}/system/config-apply.sh" "${ROOTFS_DIR}/opt/logfalcon/config-apply.sh"
+
+# Copy health check script
+install -m 755 "${REPO_ROOT}/scripts/healthcheck.sh" "${ROOTFS_DIR}/opt/logfalcon/healthcheck.sh"
+
 # Copy udev rule
 install -m 644 "${REPO_ROOT}/system/99-betaflight-fc.rules" "${ROOTFS_DIR}/etc/udev/rules.d/"
+
+# Allow bbsyncer to restart hostapd via systemctl (needed for web settings save)
+mkdir -p "${ROOTFS_DIR}/etc/polkit-1/rules.d"
+cat > "${ROOTFS_DIR}/etc/polkit-1/rules.d/50-logfalcon-hostapd.rules" <<'POLICYEOF'
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "hostapd.service" &&
+        subject.user == "bbsyncer") {
+        return polkit.Result.YES;
+    }
+});
+POLICYEOF
 
 # Copy boot config
 install -m 644 "${REPO_ROOT}/boot/logfalcon-config.txt" "${ROOTFS_DIR}/boot/firmware/" 2>/dev/null || \
@@ -55,7 +78,8 @@ echo "[logfalcon] Created ${BOOT_DIR}/userconf.txt for headless first boot"
 # Enable services in chroot
 on_chroot << CHEOF
 systemctl enable logfalcon-web.service
-systemctl enable logfalcon-firstboot.service
+systemctl enable logfalcon-config-apply.service
+systemctl enable logfalcon-wifi-init.service
 systemctl enable logfalcon-boot-led.service
 systemctl enable logfalcon-ready-led.service
 systemctl enable hostapd

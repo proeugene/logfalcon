@@ -29,9 +29,24 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=logfalcon
 
-# Resource limits
+# Resource limits — cgroup v2 memory guard (Pi Zero W has 512 MB RAM)
+# MemoryHigh=300M: kernel throttles allocations above this threshold
+# MemoryMax=350M: hard ceiling — OOM-kill the unit if exceeded
+MemoryHigh=300M
+MemoryMax=350M
 TimeoutStartSec=600
 TimeoutStopSec=10
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+# Filesystem access — log storage, config, and LED sysfs
+ReadWritePaths=/mnt/logfalcon-logs /etc/logfalcon /sys/class/leds
 
 # Restore ready LED after sync completes (success or failure)
 ExecStopPost=+/usr/bin/systemctl start logfalcon-ready-led.service

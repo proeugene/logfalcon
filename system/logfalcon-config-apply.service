@@ -1,0 +1,22 @@
+# systemd unit for LogFalcon boot-time config application
+# Reads /boot/firmware/logfalcon-config.txt and applies SSID/password
+# to hostapd and logfalcon.toml. Runs on every boot (idempotent —
+# skips if config hash hasn't changed since last boot).
+#
+# Replaces the old logfalcon-firstboot.service (misleading name).
+# Install to: /etc/systemd/system/logfalcon-config-apply.service
+# Enable: sudo systemctl enable logfalcon-config-apply.service
+
+[Unit]
+Description=LogFalcon Config Apply
+Documentation=https://github.com/proeugene/logfalcon
+After=local-fs.target
+Before=hostapd.service logfalcon-web.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/logfalcon/config-apply.sh
+
+[Install]
+WantedBy=multi-user.target

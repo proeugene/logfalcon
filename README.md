@@ -63,7 +63,17 @@ Later, from any phone: connect to **`LogFalcon`** Wi-Fi → open **`http://log.f
 
 ### Step 1 — Download the image
 
-Grab the latest **`logfalcon-*.img.xz`** from [**Releases**](https://github.com/proeugene/logfalcon/releases).
+Grab the latest release from [**Releases**](https://github.com/proeugene/logfalcon/releases/latest). Each `v*` tag release includes:
+
+| Asset | Description |
+|-------|-------------|
+| `logfalcon-*.img.xz` | Pre-built Raspberry Pi OS image (flash to SD, boot, done) |
+| `logfalcon-arm6` | ARMv6 binary (Pi Zero W) |
+| `logfalcon-arm64` | ARM64 binary (Pi Zero 2 W) |
+| `logfalcon-amd64` | AMD64 binary (dev/testing on x86_64) |
+| `checksums.txt` | SHA-256 checksums for all assets |
+
+For most pilots, download the `.img.xz` file and flash it to a microSD card.
 
 ### Step 2 — Burn to microSD
 
@@ -131,8 +141,8 @@ passwd
 ```
 
 **Useful SSH tasks:**
-- Check the sync log: `journalctl -u logfalcon -f`
-- Browse log files: `ls ~/blackbox-logs/`
+- Check the sync log: `journalctl -u "logfalcon@*" -f`
+- Browse log files: `ls /mnt/logfalcon-logs/`
 - Manual update: see [Development & Building](#development--building) below
 
 > 🔑 The Wi-Fi hotspot password is separate: **`fpvpilot`** (SSID `LogFalcon`).  
@@ -335,6 +345,36 @@ Your FC logs to an SD card, not internal flash. MSP can't read FC-side SD cards.
 
 ---
 
+## 🏭 Production Deployment & Hardware Setup
+
+| Board | Image / binary | Notes |
+|-------|----------------|-------|
+| Pi Zero W | `logfalcon-*.img.xz` (ARMv6 image) or `logfalcon-arm6` binary | Best compatibility, 512 MB RAM |
+| Pi Zero 2 W | `logfalcon-*.img.xz` (ARMv6 image works; `logfalcon-arm64` binary for native speed) | ~2× faster sync |
+
+**microSD card:** Quality 16 GB+ A1/A2 card (SanDisk Max Endurance, Samsung PRO Endurance recommended). Avoid pulling power during a sync — wait for the LED to go solid.
+
+**Logs and monitoring:**
+
+```bash
+# Quick health check (exit 0 = healthy, prints status line)
+/opt/logfalcon/healthcheck.sh
+
+# Service logs
+journalctl -u logfalcon-web -f              # web server
+journalctl -u "logfalcon@ttyACM0" -f         # sync (per FC)
+
+# CPU temperature
+cat /sys/class/thermal/thermal_zone0/temp    # millidegrees C (e.g. 52000 = 52.0°C)
+# or: curl -s http://127.0.0.1/health | python3 -m json.tool
+```
+
+**Log storage:** `/mnt/logfalcon-logs/` — mount a dedicated partition for best results.
+
+**Journald:** Bounded to 50 MB by default (pi-gen image). Do not enable verbose debug logging in production — it fills the SD card.
+
+---
+
 <details>
 <summary><h2>🛠️ Developer Guide</h2></summary>
 
@@ -406,7 +446,7 @@ Requires Docker. Uses [pi-gen](https://github.com/RPi-Distro/pi-gen):
 cd pi-gen && bash build.sh
 ```
 
-Takes 30–60 min on first run. Output: `pi-gen/pi-gen-repo/deploy/`. CI builds images automatically on every release tag.
+Takes 30–60 min on first run. Output: `pi-gen/pi-gen-repo/deploy/`. CI builds images automatically on every `v*` tag push via `.github/workflows/release.yml`. The release workflow also builds all three binaries (`arm6`, `arm64`, `amd64`), runs an image-size gate (600 MB max after PiShrink), and publishes a GitHub Release with checksums.
 
 ### Architecture
 

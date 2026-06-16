@@ -2,8 +2,8 @@ package msp
 
 // Frame represents a decoded MSP frame.
 type Frame struct {
-	Version   int    // 1 or 2
-	Direction byte   // '<', '>', or '!'
+	Version   int  // 1 or 2
+	Direction byte // '<', '>', or '!'
 	Code      uint16
 	Payload   []byte
 }
@@ -56,16 +56,18 @@ const (
 
 // FrameDecoder is a streaming MSP frame decoder implementing a 14-state machine.
 type FrameDecoder struct {
-	Frames     []Frame
-	state      int
-	version    int
-	direction  byte
-	code       uint16
-	size       int
-	payload    []byte
-	payloadIdx int
-	checksum   byte   // running XOR for v1
-	v2Header   []byte // accumulated V2 header bytes for batch CRC
+	Frames      []Frame
+	state       int
+	version     int
+	direction   byte
+	code        uint16
+	size        int
+	payload     []byte
+	payloadBuf  []byte // reusable grow-only buffer for frame payloads
+	payloadIdx  int
+	checksum    byte    // running XOR for v1
+	v2Header    [5]byte // accumulated V2 header bytes for batch CRC
+	v2HeaderLen int     // number of bytes in v2Header
 }
 
 // NewFrameDecoder returns a FrameDecoder in the idle state.
@@ -89,7 +91,7 @@ func (d *FrameDecoder) reset() {
 	d.payload = nil
 	d.payloadIdx = 0
 	d.checksum = 0
-	d.v2Header = nil
+	d.v2HeaderLen = 0
 }
 
 func (d *FrameDecoder) process(b byte) {
@@ -135,7 +137,10 @@ func (d *FrameDecoder) process(b byte) {
 		if d.size == 0 {
 			d.state = stateV1Checksum
 		} else {
-			d.payload = make([]byte, d.size)
+			if d.size > cap(d.payloadBuf) {
+				d.payloadBuf = make([]byte, d.size)
+			}
+			d.payload = d.payloadBuf[:d.size]
 			d.payloadIdx = 0
 			d.state = stateV1Payload
 		}
@@ -163,31 +168,39 @@ func (d *FrameDecoder) process(b byte) {
 
 	// --- V2 path ---
 	case stateV2Flag:
-		d.v2Header = []byte{b}
+		d.v2Header[0] = b
+		d.v2HeaderLen = 1
 		d.state = stateV2CodeLo
 
 	case stateV2CodeLo:
 		d.code = uint16(b)
-		d.v2Header = append(d.v2Header, b)
+		d.v2Header[1] = b
+		d.v2HeaderLen = 2
 		d.state = stateV2CodeHi
 
 	case stateV2CodeHi:
 		d.code |= uint16(b) << 8
-		d.v2Header = append(d.v2Header, b)
+		d.v2Header[2] = b
+		d.v2HeaderLen = 3
 		d.state = stateV2LenLo
 
 	case stateV2LenLo:
 		d.size = int(b)
-		d.v2Header = append(d.v2Header, b)
+		d.v2Header[3] = b
+		d.v2HeaderLen = 4
 		d.state = stateV2LenHi
 
 	case stateV2LenHi:
 		d.size |= int(b) << 8
-		d.v2Header = append(d.v2Header, b)
+		d.v2Header[4] = b
+		d.v2HeaderLen = 5
 		if d.size == 0 {
 			d.state = stateV2Checksum
 		} else {
-			d.payload = make([]byte, d.size)
+			if d.size > cap(d.payloadBuf) {
+				d.payloadBuf = make([]byte, d.size)
+			}
+			d.payload = d.payloadBuf[:d.size]
 			d.payloadIdx = 0
 			d.state = stateV2Payload
 		}
@@ -200,7 +213,7 @@ func (d *FrameDecoder) process(b byte) {
 		}
 
 	case stateV2Checksum:
-		expected := CRC8DVBS2(d.payload, CRC8DVBS2(d.v2Header, 0))
+		expected := CRC8DVBS2(d.payload, CRC8DVBS2(d.v2Header[:d.v2HeaderLen], 0))
 		if b == expected {
 			pl := make([]byte, len(d.payload))
 			copy(pl, d.payload)

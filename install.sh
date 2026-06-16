@@ -24,7 +24,6 @@ CONFIG_DIR="/etc/logfalcon"
 SSID="LogFalcon"
 WIFI_PASSWORD="fpvpilot"
 HOTSPOT_IP="192.168.4.1"
-HOTSPOT_NETMASK="255.255.255.0"
 HOTSPOT_DHCP_START="192.168.4.2"
 HOTSPOT_DHCP_END="192.168.4.20"
 PASSWORD_SET_BY_ARG=0
@@ -57,7 +56,7 @@ echo "[1/8] Installing system packages..."
 apt-get update -q
 apt-get install -y \
   hostapd dnsmasq avahi-daemon \
-  rfkill
+  rfkill polkitd iw
 
 # Unblock Wi-Fi
 rfkill unblock wlan
@@ -126,12 +125,27 @@ chmod 755 "$LOG_DIR"
 echo "[5/8] Configuring Wi-Fi hotspot..."
 
 # Static IP on wlan0
-cat > /etc/network/interfaces.d/wlan0-static <<EOF
-auto wlan0
-iface wlan0 inet static
-    address $HOTSPOT_IP
-    netmask $HOTSPOT_NETMASK
+if [[ -f /etc/dhcpcd.conf ]]; then
+  if ! grep -q "# LogFalcon hotspot static IP" /etc/dhcpcd.conf 2>/dev/null; then
+    cat >> /etc/dhcpcd.conf <<EOF
+
+# LogFalcon hotspot static IP
+interface wlan0
+static ip_address=$HOTSPOT_IP/24
+nohook wpa_supplicant
 EOF
+  fi
+else
+  mkdir -p /etc/systemd/network
+  cat > /etc/systemd/network/10-wlan0-static.network <<EOF
+[Match]
+Name=wlan0
+
+[Network]
+Address=$HOTSPOT_IP/24
+EOF
+  systemctl enable systemd-networkd 2>/dev/null || true
+fi
 
 # hostapd config
 cat > /etc/hostapd/hostapd.conf <<EOF
@@ -154,8 +168,18 @@ country_code=US
 ieee80211d=1
 EOF
 
+# Allow bbsyncer (web server) to rewrite hostapd.conf for settings save
+chown bbsyncer:bbsyncer /etc/hostapd/hostapd.conf
+
 # Enable hostapd
 sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
+
+# Keep Bookworm's Wi-Fi client managers off the AP interface.
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/logfalcon-unmanaged.conf <<EOF
+[keyfile]
+unmanaged-devices=interface-name:wlan0
+EOF
 
 # dnsmasq config (DHCP + DNS redirect for captive portal)
 cat > /etc/dnsmasq.d/logfalcon.conf <<EOF
@@ -171,8 +195,49 @@ EOF
 # Prevent dnsmasq from managing resolv.conf
 grep -q "^no-resolv" /etc/dnsmasq.conf 2>/dev/null || echo "no-resolv" >> /etc/dnsmasq.conf
 
+# dnsmasq and hostapd should wait until wlan0 exists and Wi-Fi init has run.
+mkdir -p /etc/systemd/system/dnsmasq.service.d
+cat > /etc/systemd/system/dnsmasq.service.d/wait-for-wlan0.conf <<EOF
+[Unit]
+After=sys-subsystem-net-devices-wlan0.device network-online.target logfalcon-wifi-init.service
+Requires=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Restart=on-failure
+RestartSec=3
+EOF
+
+mkdir -p /etc/systemd/system/hostapd.service.d
+cat > /etc/systemd/system/hostapd.service.d/wait-for-wlan0.conf <<EOF
+[Unit]
+After=sys-subsystem-net-devices-wlan0.device logfalcon-wifi-init.service
+Requires=sys-subsystem-net-devices-wlan0.device
+
+[Service]
+Restart=on-failure
+RestartSec=3
+EOF
+
 # avahi mDNS hostname
 sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/dev/null || true
+
+# Regulatory domain + rfkill init for AP mode.
+mkdir -p /etc/wpa_supplicant
+cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
+country=US
+ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
+update_config=1
+EOF
+if [[ -f /etc/default/crda ]]; then
+  sed -i 's/^REGDOMAIN=.*/REGDOMAIN=US/' /etc/default/crda
+  grep -q "^REGDOMAIN=" /etc/default/crda || echo "REGDOMAIN=US" >> /etc/default/crda
+fi
+
+systemctl mask wpa_supplicant.service 2>/dev/null || true
+systemctl mask wpa_supplicant@wlan0.service 2>/dev/null || true
+systemctl mask NetworkManager.service 2>/dev/null || true
+systemctl mask NetworkManager-wait-online.service 2>/dev/null || true
+systemctl mask ModemManager.service 2>/dev/null || true
 
 # Bring up wlan0 with static IP now
 ip addr add "$HOTSPOT_IP/24" dev wlan0 2>/dev/null || true
@@ -184,6 +249,7 @@ cp "$SCRIPT_DIR/system/logfalcon@.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/system/logfalcon-web.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/system/logfalcon-boot-led.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/system/logfalcon-ready-led.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/system/logfalcon-wifi-init.service" /etc/systemd/system/
 
 # Boot LED heartbeat script
 install -m 755 "$SCRIPT_DIR/system/logfalcon-boot-led.sh" "$INSTALL_DIR/boot-led.sh"
@@ -191,12 +257,27 @@ install -m 755 "$SCRIPT_DIR/system/logfalcon-boot-led.sh" "$INSTALL_DIR/boot-led
 # Ready LED script
 install -m 755 "$SCRIPT_DIR/system/logfalcon-ready-led.sh" "$INSTALL_DIR/ready-led.sh"
 
-# Firstboot config service
-cp "$SCRIPT_DIR/system/firstboot.sh" "$INSTALL_DIR/firstboot.sh"
-chmod +x "$INSTALL_DIR/firstboot.sh"
-cp "$SCRIPT_DIR/system/logfalcon-firstboot.service" /etc/systemd/system/
+# Config-apply script (boot-time SSID/password applicator)
+cp "$SCRIPT_DIR/system/config-apply.sh" "$INSTALL_DIR/config-apply.sh"
+chmod +x "$INSTALL_DIR/config-apply.sh"
+mkdir -p /var/lib/logfalcon
+cp "$SCRIPT_DIR/system/logfalcon-config-apply.service" /etc/systemd/system/
+
+# Allow bbsyncer (web server) to restart hostapd for settings save.
+mkdir -p /etc/polkit-1/rules.d
+cat > /etc/polkit-1/rules.d/50-logfalcon-hostapd.rules <<'EOF'
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "hostapd.service" &&
+        subject.user == "bbsyncer") {
+        return polkit.Result.YES;
+    }
+});
+EOF
+
 systemctl daemon-reload
-systemctl enable logfalcon-firstboot.service
+systemctl enable logfalcon-config-apply.service
+systemctl enable logfalcon-wifi-init.service
 systemctl enable logfalcon-web.service
 systemctl enable logfalcon-boot-led.service
 systemctl enable logfalcon-ready-led.service
@@ -205,11 +286,16 @@ systemctl enable dnsmasq
 systemctl enable avahi-daemon
 
 # Boot partition config (user-editable)
-if [[ ! -f /boot/firmware/logfalcon-config.txt ]]; then
-  cp "$SCRIPT_DIR/boot/logfalcon-config.txt" /boot/firmware/logfalcon-config.txt
+BOOT_DIR=""
+[[ -d /boot/firmware ]] && BOOT_DIR="/boot/firmware"
+[[ -z "$BOOT_DIR" && -d /boot ]] && BOOT_DIR="/boot"
+if [[ -n "$BOOT_DIR" && ! -f "$BOOT_DIR/logfalcon-config.txt" ]]; then
+  cp "$SCRIPT_DIR/boot/logfalcon-config.txt" "$BOOT_DIR/logfalcon-config.txt"
 fi
-sed -i "s/^SSID=.*/SSID=$SSID/" /boot/firmware/logfalcon-config.txt
-sed -i "s/^PASSWORD=.*/PASSWORD=$WIFI_PASSWORD/" /boot/firmware/logfalcon-config.txt
+if [[ -n "$BOOT_DIR" ]]; then
+  sed -i "s/^SSID=.*/SSID=$SSID/" "$BOOT_DIR/logfalcon-config.txt"
+  sed -i "s/^PASSWORD=.*/PASSWORD=$WIFI_PASSWORD/" "$BOOT_DIR/logfalcon-config.txt"
+fi
 
 ### --- 7. udev rule --- ###
 echo "[7/8] Installing udev rule..."

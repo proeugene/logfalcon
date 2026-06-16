@@ -45,9 +45,12 @@ mkdir -p "$LOG_DIR"
 chown bbsyncer:bbsyncer "$LOG_DIR"
 chmod 755 "$LOG_DIR"
 
-# Firstboot script
-cp "$REPO_DIR/system/firstboot.sh" "$INSTALL_DIR/firstboot.sh"
-chmod +x "$INSTALL_DIR/firstboot.sh"
+# Config-apply script (replaces firstboot.sh — runs every boot, idempotent)
+cp "$REPO_DIR/system/config-apply.sh" "$INSTALL_DIR/config-apply.sh"
+chmod +x "$INSTALL_DIR/config-apply.sh"
+
+# State directory for config-apply hash tracking
+mkdir -p /var/lib/logfalcon
 
 # Ownership
 chown -R bbsyncer:bbsyncer "$INSTALL_DIR" "$CONFIG_DIR"

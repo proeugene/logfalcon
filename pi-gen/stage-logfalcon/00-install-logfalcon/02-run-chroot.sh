@@ -25,7 +25,7 @@ EOF
     systemctl enable systemd-networkd 2>/dev/null || true
 fi
 
-# hostapd config (defaults — overridden by firstboot from logfalcon-config.txt)
+# hostapd config (defaults — overridden by config-apply from logfalcon-config.txt)
 cat > /etc/hostapd/hostapd.conf <<EOF
 interface=wlan0
 driver=nl80211
@@ -45,6 +45,9 @@ max_num_sta=8
 country_code=US
 ieee80211d=1
 EOF
+
+# Allow bbsyncer (web server) to rewrite hostapd.conf for settings save
+chown bbsyncer:bbsyncer /etc/hostapd/hostapd.conf
 
 # Enable hostapd config
 sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd 2>/dev/null || true
@@ -120,25 +123,5 @@ if [ -f /etc/default/crda ]; then
     sed -i 's/^REGDOMAIN=.*/REGDOMAIN=US/' /etc/default/crda
     grep -q "^REGDOMAIN=" /etc/default/crda || echo "REGDOMAIN=US" >> /etc/default/crda
 fi
-
-# Boot-time service: sets regulatory domain and unblocks rfkill BEFORE hostapd.
-# This is the reliable fix — rfkill state and regulatory domain are not
-# persisted across reboots; they must be set each boot.
-cat > /etc/systemd/system/logfalcon-wifi-init.service <<EOF
-[Unit]
-Description=LogFalcon Wi-Fi regulatory domain and rfkill init
-# Must run before anything that tries to use wlan0 (networkd, hostapd, dnsmasq)
-Before=hostapd.service dnsmasq.service systemd-networkd.service
-After=sys-subsystem-net-devices-wlan0.device
-Requires=sys-subsystem-net-devices-wlan0.device
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/bin/sh -c 'rfkill unblock all; iw reg set US; sleep 1'
-
-[Install]
-WantedBy=multi-user.target
-EOF
 
 systemctl enable logfalcon-wifi-init.service

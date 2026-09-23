@@ -513,4 +513,4 @@ See [CHANGELOG.md](CHANGELOG.md) for the full version history.
 
 ## License
 
-[MIT](LICENSE) — Eugene Prokopev
+[MIT](LICENSE) — Eugene Prokudin

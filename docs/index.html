@@ -3,167 +3,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="LogFalcon — clear your FC flash in 30 seconds. No laptop. No dongles. Keep flying.">
-  <title>LogFalcon</title>
+  <meta name="description" content="LogFalcon is an experimental Go and Raspberry Pi appliance for automatically collecting drone blackbox logs over USB.">
+  <title>LogFalcon — Drone blackbox collection</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-
-  <div class="radar-bg"></div>
-
-  <!-- NAV -->
-  <nav>
-    <span class="brand"><span class="brand-accent">LOG</span>FALCON</span>
+  <div class="radar-bg" aria-hidden="true"></div>
+  <nav aria-label="Main navigation">
+    <a class="brand" href="index.html"><span class="brand-accent">LOG</span>FALCON</a>
     <div class="nav-right">
       <a class="nav-link" href="guide.html">Guide</a>
-      <span class="version">v0.4.6</span>
-      <a class="nav-link" href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GitHub ↗</a>
+      <a class="nav-link" href="https://github.com/proeugene/logfalcon">GitHub ↗</a>
     </div>
   </nav>
-
-  <!-- HERO -->
-  <section class="hero">
-    <div class="hud-frame">
-      <div class="corner-tr"></div>
-      <div class="corner-bl"></div>
-      <p class="eyebrow">BETAFLIGHT · INAV · BLACKBOX · COMPANION</p>
-      <h1>Keep flying.<br>Never lose<br>a log.</h1>
-      <p class="hero-sub">
-        FC flash full mid-session? Plug into the Pi. Wait for the LED.<br>
-        Fly again. No laptop, no dongles — never leave the field.
-      </p>
-      <div class="ctas">
-        <a href="https://github.com/proeugene/logfalcon/releases/latest" class="btn-primary" target="_blank" rel="noopener">↓ Download Image</a>
-        <a href="#procedure" class="btn-ghost">How it works ↓</a>
-      </div>
-
-      <!-- Telemetry strip -->
-      <div class="telemetry">
-        <div class="telem-item">
-          <span class="telem-key">SYNC TIME</span>
-          <span class="telem-val accent">~30–80s</span>
+  <main>
+    <section class="hero">
+      <div class="hud-frame">
+        <div class="corner-tr" aria-hidden="true"></div>
+        <div class="corner-bl" aria-hidden="true"></div>
+        <p class="eyebrow">Open-source · Raspberry Pi · Go</p>
+        <h1>Collect blackbox logs.<br>Without a laptop.</h1>
+        <p class="hero-sub">A small Raspberry Pi appliance that copies flight-controller logs over USB, organises them by aircraft, and makes them available over local Wi-Fi.</p>
+        <div class="ctas">
+          <a href="guide.html#setup" class="btn-primary">Get started</a>
+          <a href="https://github.com/proeugene/logfalcon" class="btn-ghost">View the code</a>
         </div>
-        <div class="telem-sep"></div>
-        <div class="telem-item">
-          <span class="telem-key">PROTOCOL</span>
-          <span class="telem-val">MSP / USB</span>
-        </div>
-        <div class="telem-sep"></div>
-        <div class="telem-item">
-          <span class="telem-key">LAPTOP</span>
-          <span class="telem-val green">NOT REQUIRED</span>
-        </div>
-        <div class="telem-sep"></div>
-        <div class="telem-item">
-          <span class="telem-key">RANGE</span>
-          <span class="telem-val">WI-FI HOTSPOT</span>
-        </div>
+        <p class="release-note"><strong>Experimental.</strong> Transfer reliability fixes are still needed. Automatic erasure is not recommended for evaluation; live transfer status is unavailable in the current dashboard.</p>
       </div>
-    </div>
-  </section>
-
-  <!-- PROCEDURE -->
-  <section id="procedure" class="section">
-    <h2 class="section-label">// PROCEDURE</h2>
-    <div class="steps">
-      <div class="step">
-        <span class="step-num">01</span>
-        <div class="step-line"></div>
-        <p class="step-title">Flash full.</p>
-        <p class="step-body">FC stops logging mid-session. Land your quad.</p>
+    </section>
+    <section id="procedure" class="section">
+      <h2 class="section-label">How it works</h2>
+      <p class="section-intro">Designed for collecting logs between flights, especially when you manage several aircraft. This is the intended workflow; confirm transfer results during evaluation.</p>
+      <div class="steps">
+        <div class="step"><span class="step-num">01</span><h3 class="step-title">Power the Pi</h3><p class="step-body">Keep it powered for your session with a suitable USB supply.</p></div>
+        <div class="step"><span class="step-num">02</span><h3 class="step-title">Connect the controller</h3><p class="step-body">USB detection starts a copy to the Pi's microSD card.</p></div>
+        <div class="step"><span class="step-num">03</span><h3 class="step-title">Save the collection</h3><p class="step-body">Dumps are grouped by controller, with session metadata and a saved-file checksum.</p></div>
+        <div class="step"><span class="step-num">04</span><h3 class="step-title">Download your logs</h3><p class="step-body">Join the Pi's Wi-Fi and download a .bbl file for Blackbox Explorer.</p></div>
       </div>
-      <div class="step">
-        <span class="step-num">02</span>
-        <div class="step-line"></div>
-        <p class="step-title">Plug in.</p>
-        <p class="step-body">Connect FC to the Pi Zero W via OTG cable (solid LED = ready). Sync starts automatically.</p>
+    </section>
+    <section class="section" id="compatibility">
+      <h2 class="section-label">Compatibility</h2>
+      <div class="compatibility-copy">
+        <p><strong>Betaflight with internal SPI flash</strong> is the primary development target. Large-transfer and storage-device parsing defects remain unresolved.</p>
+        <p>iNav support needs protocol corrections and hardware validation. FC-side SD card logs and ArduPilot are not supported.</p>
+        <p>Pi Zero W and Zero 2 W builds exist. Physical compatibility and timings still need recorded testing; no transfer-time guarantee is made.</p>
       </div>
-      <div class="step">
-        <span class="step-num">03</span>
-        <div class="step-line"></div>
-        <p class="step-title">LED: done.</p>
-        <p class="step-body">~30–80 seconds. Verified. Flash erased. Unplug the FC.</p>
-      </div>
-      <div class="step">
-        <span class="step-num">04</span>
-        <div class="step-line last"></div>
-        <p class="step-title">Fly again.</p>
-        <p class="step-body">Repeat all session. Logs timestamped on the Pi — ready at home.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- BEFORE / NOW -->
-  <section class="section split-section">
-    <div class="split-card before-card">
-      <p class="card-label warn">BEFORE</p>
-      <h3>Laptop.<br>Or dongle.</h3>
-      <ul class="card-list">
-        <li>FC flash full — session interrupted</li>
-        <li>Find a laptop, open Configurator, cable up</li>
-        <li>— OR — buy an expensive USB dongle</li>
-        <li>Either way: stop flying, leave the field</li>
+      <a class="text-link" href="guide.html#compatibility">Read the limitations →</a>
+    </section>
+    <section class="section" id="setup">
+      <h2 class="section-label">What you need</h2>
+      <ul class="equipment-list">
+        <li>Pi Zero W or Zero 2 W</li><li>16 GB+ microSD card</li><li>5 V USB supply</li><li>OTG adapter and data cable</li><li>Betaflight FC with SPI flash</li>
       </ul>
-    </div>
-    <div class="split-card now-card">
-      <p class="card-label accent">NOW</p>
-      <h3>Pi Zero W.<br>In your bag.</h3>
-      <ul class="card-list">
-        <li>FC flash full — land for 30 seconds</li>
-        <li>Plug into the Pi, wait for the LED</li>
-        <li>Fly again — repeat as many times as needed</li>
-        <li>Logs timestamped and ready at home</li>
-      </ul>
-    </div>
-  </section>
-
-  <!-- GEAR -->
-  <section class="section">
-    <h2 class="section-label">// GEAR REQUIRED</h2>
-    <div class="gear-grid">
-      <div class="gear-item">
-        <span class="gear-icon">⬡</span>
-        <span class="gear-name">Pi Zero W<br>or Zero 2 W</span>
-      </div>
-      <div class="gear-item">
-        <span class="gear-icon">▣</span>
-        <span class="gear-name">microSD<br>16 GB+</span>
-      </div>
-      <div class="gear-item">
-        <span class="gear-icon">⚡</span>
-        <span class="gear-name">USB<br>power bank</span>
-      </div>
-      <div class="gear-item">
-        <span class="gear-icon">⇄</span>
-        <span class="gear-name">OTG<br>cable</span>
-      </div>
-      <div class="gear-item">
-        <span class="gear-icon">◈</span>
-        <span class="gear-name">Betaflight / iNav FC<br>SPI flash</span>
-      </div>
-    </div>
-  </section>
-
-  <!-- WARNING -->
-  <section class="section">
-    <div class="warn-bar">
-      <span class="warn-badge">⚠ NOTICE</span>
-      <span class="warn-text">SPI flash only. Requires Betaflight or iNav internal SPI flash blackbox — not FC SD-card blackbox. Check Configurator: <strong>Blackbox Device = SPI Flash</strong>.</span>
-    </div>
-  </section>
-
+      <p class="section-intro">Start with the setup guide: it covers image flashing, disabling destructive defaults and checking a first transfer.</p>
+      <a class="btn-primary" href="guide.html#setup">Open the setup guide</a>
+    </section>
+  </main>
   <footer>
-    <span>LOGFALCON</span>
-    <span class="footer-sep">·</span>
-    <a href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GITHUB</a>
-    <span class="footer-sep">·</span>
-    <a href="https://github.com/proeugene/logfalcon/discussions" target="_blank" rel="noopener">DISCUSSIONS</a>
-    <span class="footer-sep">·</span>
-    <a href="https://ko-fi.com/logfalcon" target="_blank" rel="noopener">KO-FI ☕</a>
-    <span class="footer-sep">·</span>
-    <span>MIT</span>
+    <span>LOGFALCON</span><span class="footer-sep">·</span>
+    <a href="https://github.com/proeugene/logfalcon">GitHub</a><span class="footer-sep">·</span>
+    <a href="https://github.com/proeugene/logfalcon/issues">Feedback</a><span class="footer-sep">·</span>
+    <a href="https://github.com/proeugene/logfalcon/blob/main/LICENSE">MIT licence</a>
   </footer>
-
-  <script src="./app.js"></script>
 </body>
 </html>

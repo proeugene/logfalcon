@@ -180,7 +180,6 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessions := s.getSessions()
-	status := lfSync.GetStatus()
 
 	var usedGB, freeGB float64
 	var freeMB float64
@@ -197,18 +196,16 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sessionsHTML := RenderSessions(sessions)
-	statusMessage := status.Message
-	if statusMessage == "" {
-		statusMessage = "Ready for the next sync."
-	}
 
 	storageWarningHTML := ""
 	if freeMB < float64(s.config.MinFreeSpaceMB) {
+		cleanupNotice := "Storage cleanup is disabled; free space before another transfer."
+		if s.config.StoragePressureCleanup {
+			cleanupNotice = "Automatic cleanup is enabled: the next transfer may delete your oldest saved sessions."
+		}
 		storageWarningHTML = fmt.Sprintf(
-			`<div class="warning-card">Low space: only %.1f MB free. `+
-				`Oldest sessions may be removed automatically during the next sync `+
-				`to stay above the %d MB reserve.</div>`,
-			freeMB, s.config.MinFreeSpaceMB,
+			`<div class="warning-card">Low space: %.1f MB free; reserve is %d MB. %s</div>`,
+			freeMB, s.config.MinFreeSpaceMB, cleanupNotice,
 		)
 	}
 
@@ -217,7 +214,6 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		FreeGB:             freeGB,
 		Pct:                pct,
 		SessionsHTML:       sessionsHTML,
-		StatusMessage:      statusMessage,
 		StorageWarningHTML: storageWarningHTML,
 		CSRFToken:          s.csrfToken,
 	})

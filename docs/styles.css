@@ -16,7 +16,7 @@
   --green:      #a3ff47;
   --orange:     #ff8800;
   --text:       #d8eaf2;
-  --muted:      #3e5a6a;
+  --muted:      #91a8b5;
   --mono:       'Courier New', 'Lucida Console', monospace;
 }
 
@@ -146,11 +146,10 @@ nav {
 }
 
 h1 {
-  font-size: clamp(48px, 9vw, 92px);
+  font-size: clamp(36px, 6vw, 64px);
   font-weight: 900;
-  line-height: 0.95;
+  line-height: 1.08;
   letter-spacing: -0.04em;
-  text-transform: uppercase;
   margin-bottom: 28px;
   text-shadow: 0 0 80px rgba(0, 210, 255, 0.18);
 }
@@ -167,7 +166,7 @@ h1 {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  margin-bottom: 48px;
+  margin-bottom: 24px;
   justify-content: center;
 }
 
@@ -213,43 +212,6 @@ h1 {
   color: var(--accent);
   background: var(--accent-glow);
 }
-
-/* Telemetry strip */
-.telemetry {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 0;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  max-width: 100%;
-}
-.telem-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 24px;
-}
-.telem-sep {
-  width: 1px;
-  background: var(--border);
-  align-self: stretch;
-}
-.telem-key {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.telem-val {
-  font-family: var(--mono);
-  font-size: 14px;
-  font-weight: bold;
-  letter-spacing: 0.06em;
-  color: var(--text);
-}
-.telem-val.accent { color: var(--accent); }
-.telem-val.green  { color: var(--green); }
 
 /* ---- SECTIONS ---- */
 .section {
@@ -322,166 +284,9 @@ h1 {
 }
 .step-body {
   font-size: 13px;
-  color: #5a7a8a;
+  color: #9ab3c0;
   line-height: 1.55;
 }
-
-/* ---- BEFORE / NOW ---- */
-.split-section {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  align-items: start;
-}
-
-@media (max-width: 600px) {
-  .split-section { grid-template-columns: 1fr; }
-}
-
-.split-card {
-  padding: 32px;
-  border: 1px solid;
-  background: var(--bg-card);
-  position: relative;
-  overflow: hidden;
-}
-.split-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.04;
-  pointer-events: none;
-}
-
-.before-card {
-  border-color: rgba(255, 136, 0, 0.25);
-}
-.before-card::after {
-  background: var(--orange);
-}
-
-.now-card {
-  border-color: rgba(0, 210, 255, 0.25);
-}
-.now-card::after {
-  background: var(--accent);
-}
-
-.card-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: bold;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  margin-bottom: 16px;
-}
-
-.split-card h3 {
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  text-transform: uppercase;
-  margin-bottom: 24px;
-}
-
-.card-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.card-list li {
-  font-size: 13px;
-  color: #6a8898;
-  padding-left: 16px;
-  position: relative;
-  line-height: 1.5;
-}
-.before-card .card-list li::before {
-  content: '—';
-  position: absolute;
-  left: 0;
-  color: var(--orange);
-  opacity: 0.6;
-}
-.now-card .card-list li::before {
-  content: '›';
-  position: absolute;
-  left: 0;
-  color: var(--accent);
-  font-weight: bold;
-}
-
-/* ---- GEAR ---- */
-.gear-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-}
-
-@media (max-width: 700px) {
-  .gear-grid { grid-template-columns: repeat(3, 1fr); }
-}
-@media (max-width: 440px) {
-  .gear-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-.gear-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px 16px;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  text-align: center;
-  transition: border-color 0.2s, background 0.2s;
-}
-.gear-item:hover {
-  border-color: var(--border-h);
-  background: var(--bg-card2);
-}
-.gear-icon {
-  font-size: 22px;
-  color: var(--accent);
-  opacity: 0.6;
-  line-height: 1;
-}
-.gear-name {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #6a8898;
-  line-height: 1.5;
-}
-
-/* ---- WARNING BAR ---- */
-.warn-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 20px 24px;
-  border: 1px solid rgba(255, 136, 0, 0.3);
-  background: rgba(255, 136, 0, 0.05);
-}
-.warn-badge {
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: bold;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--orange);
-  white-space: nowrap;
-  margin-top: 2px;
-}
-.warn-text {
-  font-size: 13px;
-  color: #6a8898;
-  line-height: 1.6;
-}
-.warn-text strong { color: var(--text); }
 
 /* ---- FOOTER ---- */
 footer {
@@ -507,8 +312,28 @@ footer {
   .hero { padding: 48px 20px 40px; }
   .hud-frame { padding: 24px 16px; }
   .section { padding: 40px 20px; }
-  .telemetry { display: flex; width: 100%; }
-  .telem-item { flex: 1; padding: 12px 16px; }
-  h1 { font-size: clamp(42px, 12vw, 72px); }
+  h1 { font-size: clamp(32px, 9vw, 48px); }
   footer { gap: 8px; flex-wrap: wrap; }
 }
+
+/* Clear copy and controls across the landing page and guide. */
+.brand { color: var(--text); text-decoration: none; }
+nav a, footer a { min-height: 44px; display: inline-flex; align-items: center; }
+footer a { color: var(--muted); text-decoration: none; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
+[id] { scroll-margin-top: 100px; }
+.release-note { max-width: 620px; margin: 0 auto; padding: 16px; background: var(--bg-card); border: 1px solid var(--border); color: #a9bdc8; font-size: 14px; text-align: left; }
+.release-note strong { color: var(--text); }
+.section-intro { max-width: 680px; margin-bottom: 28px; color: #a9bdc8; }
+.section-label { margin-bottom: 24px; font-size: 14px; opacity: 1; letter-spacing: 0.1em; }
+.steps { gap: 24px; }
+.step { padding: 0; }
+.step-num { opacity: 0.6; }
+.compatibility-copy { max-width: 680px; color: #a9bdc8; }
+.compatibility-copy p { margin-bottom: 16px; }
+.compatibility-copy strong { color: var(--text); }
+.text-link { display: inline-block; padding: 12px 0; color: var(--accent); }
+.equipment-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; list-style: none; margin-bottom: 24px; }
+.equipment-list li { padding: 16px; background: var(--bg-card); border: 1px solid var(--border); }
+@media (max-width: 440px) { .equipment-list { grid-template-columns: 1fr; } .nav-right { gap: 14px; } .brand { letter-spacing: 0.1em; } }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *, *::before, *::after { animation: none !important; transition: none !important; } }

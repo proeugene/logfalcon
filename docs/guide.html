@@ -3,478 +3,138 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="LogFalcon Guide — setup, usage, configuration, troubleshooting.">
-  <title>LogFalcon — Guide</title>
+  <meta name="description" content="Set up and evaluate LogFalcon: compatibility, downloads, configuration, troubleshooting and development.">
+  <title>LogFalcon — Setup and usage guide</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="guide.css">
 </head>
 <body>
-
-  <div class="radar-bg"></div>
-
-  <!-- NAV -->
-  <nav>
-    <a href="index.html" class="brand" style="text-decoration:none"><span class="brand-accent">LOG</span>FALCON</a>
-    <div class="nav-right">
-      <a class="nav-link active" href="guide.html">Guide</a>
-      <span class="version">v0.4.6</span>
-      <a class="nav-link" href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GitHub ↗</a>
-    </div>
+  <div class="radar-bg" aria-hidden="true"></div>
+  <nav aria-label="Main navigation">
+    <a href="index.html" class="brand"><span class="brand-accent">LOG</span>FALCON</a>
+    <div class="nav-right"><a class="nav-link active" href="guide.html" aria-current="page">Guide</a><a class="nav-link" href="https://github.com/proeugene/logfalcon">GitHub ↗</a></div>
   </nav>
-
-  <!-- HEADER -->
   <header class="guide-header">
-    <p class="eyebrow">// PILOT GUIDE</p>
-    <h1>LogFalcon<br>Documentation</h1>
-    <p class="hero-sub">Everything you need to set up, use, and troubleshoot your field sync box.</p>
+    <p class="eyebrow">Pilot and developer guide</p>
+    <h1>Set up. Collect. Download.</h1>
+    <p class="hero-sub">Practical instructions for evaluating the current experimental build.</p>
   </header>
-
-  <!-- TABLE OF CONTENTS -->
   <div class="guide-body">
-    <aside class="toc">
+    <aside class="toc" aria-label="Guide contents">
       <p class="toc-label">Contents</p>
-      <a href="#setup">01 Setup</a>
-      <a href="#first-sync">02 First Sync</a>
-      <a href="#led-reference">03 LED Reference</a>
-      <a href="#download-logs">04 Downloading Logs</a>
-      <a href="#configuration">05 Configuration</a>
-      <a href="#compatibility">06 FC Compatibility</a>
-      <a href="#troubleshooting">07 Troubleshooting</a>
-      <a href="#building">08 Building from Source</a>
-      <a href="#cli">09 CLI Reference</a>
+      <a href="#setup">Setup</a><a href="#first-sync">First transfer</a><a href="#download-logs">Download logs</a><a href="#compatibility">Compatibility</a><a href="#configuration">Configuration</a><a href="#led-reference">LED reference</a><a href="#troubleshooting">Troubleshooting / SSH</a><a href="#building">Development</a><a href="#cli">CLI reference</a>
     </aside>
-
     <main class="guide-content">
-
-      <!-- ===== SETUP ===== -->
       <section id="setup" class="doc-section">
-        <h2 class="section-label">// 01 SETUP</h2>
-
-        <h3>What you need</h3>
-        <div class="parts-grid">
-          <div class="part"><span class="part-icon">⬡</span> <a href="https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/" target="_blank" rel="noopener">Raspberry Pi Zero 2 W</a> (or Zero W)</div>
-          <div class="part"><span class="part-icon">▣</span> microSD card — 16 GB or larger</div>
-          <div class="part"><span class="part-icon">⚡</span> USB battery bank for power</div>
-          <div class="part"><span class="part-icon">⇄</span> <a href="https://www.amazon.com/s?k=micro+usb+otg+cable" target="_blank" rel="noopener">USB OTG cable</a> (micro-USB → USB-A female)</div>
-          <div class="part"><span class="part-icon">◈</span> <a href="https://www.amazon.com/s?k=usb+a+to+micro+usb+short+cable" target="_blank" rel="noopener">USB-A to micro-USB cable</a> (for FC)</div>
-        </div>
-
-        <h3>Step 1 — Download the image</h3>
-        <p>Grab the latest <code>logfalcon-*.img.xz</code> from
-          <a href="https://github.com/proeugene/logfalcon/releases/latest" target="_blank" rel="noopener">GitHub Releases</a>.
-        </p>
-
-        <h3>Step 2 — Flash the SD card</h3>
-        <p>Use <a href="https://www.raspberrypi.com/software/" target="_blank" rel="noopener">Raspberry Pi Imager</a> or
-          <a href="https://etcher.balena.io/" target="_blank" rel="noopener">Balena Etcher</a>.
-          Any 16 GB+ card works. Write the <code>.img.xz</code> file — both tools decompress automatically.</p>
-
-        <h3>Step 3 — Customise Wi-Fi (optional)</h3>
-        <p>Before ejecting the SD card, open the <code>boot</code> partition and edit <strong>logfalcon-config.txt</strong>:</p>
-        <pre><code>SSID=LogFalcon
-PASSWORD=your-password</code></pre>
-        <div class="info-box">
-          <span class="info-badge">💡 TIP</span>
-          <span>Default password is <code>fpvpilot</code> — change it before flying at a shared field.
-            You can also change it later from the web UI → ⚙ Settings.</span>
-        </div>
-
-        <h3>Step 4 — Boot</h3>
-        <p>Insert the SD card into your Pi, power it with a battery bank. The LED will pulse slowly for ~60 seconds.
-          When it goes <strong>solid on</strong>, the Pi is ready.</p>
-
-        <h3>Alternative: Install on existing Pi</h3>
-        <p>Already running Raspberry Pi OS? Install with one command:</p>
-        <pre><code>curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/install.sh | sudo bash</code></pre>
-        <p>This downloads the correct ARM binary, installs packages, configures the hotspot, and enables all services.
-          Reboot when done. To uninstall:</p>
-        <pre><code>curl -sSL https://github.com/proeugene/logfalcon/raw/main/scripts/uninstall.sh | sudo bash</code></pre>
-
-        <h3>SSH access</h3>
-        <p>SSH is enabled by default. Connect from any computer on the same network — or directly through the hotspot:</p>
-        <pre><code>ssh pi@logfalcon.local   # or ssh pi@192.168.4.1 via hotspot</code></pre>
-        <div class="info-box">
-          <span class="info-badge">🔑 DEFAULT</span>
-          <span>Username: <code>pi</code> &nbsp;|&nbsp; Password: <code>logfalcon</code></span>
-        </div>
-        <p>Change your password immediately — especially before flying at a shared field:</p>
-        <pre><code>passwd</code></pre>
-        <div class="info-box">
-          <span class="info-badge">💡 TIP</span>
-          <span>The Wi-Fi hotspot password (<code>fpvpilot</code>) and SSH password are independent — changing one does not affect the other.</span>
-        </div>
-      </section>
-
-      <!-- ===== FIRST SYNC ===== -->
-      <section id="first-sync" class="doc-section">
-        <h2 class="section-label">// 02 FIRST SYNC</h2>
-
-        <div class="flow-diagram">
-          <div class="flow-step">
-            <span class="flow-num">①</span>
-            <p><strong>Land your quad</strong> — FC flash is full or you want to clear it.</p>
-          </div>
-          <div class="flow-arrow">↓</div>
-          <div class="flow-step">
-            <span class="flow-num">②</span>
-            <p><strong>Plug FC into the Pi</strong> — use the <em>inner</em> micro-USB port (OTG/data).
-              The outer port is power only.</p>
-          </div>
-          <div class="flow-arrow">↓</div>
-          <div class="flow-step">
-            <span class="flow-num">③</span>
-            <p><strong>Watch the LED</strong> — fast blink = syncing. Takes ~30–80 seconds depending on flash size.</p>
-          </div>
-          <div class="flow-arrow">↓</div>
-          <div class="flow-step">
-            <span class="flow-num">④</span>
-            <p><strong>LED goes solid</strong> — done. Flash copied, verified (SHA-256), erased. Safe to unplug.</p>
-          </div>
-          <div class="flow-arrow">↓</div>
-          <div class="flow-step">
-            <span class="flow-num">⑤</span>
-            <p><strong>Fly again.</strong> Repeat as many times as needed. Every sync is timestamped.</p>
-          </div>
-        </div>
-
-        <div class="warn-bar" style="margin-top:32px">
-          <span class="warn-badge">⚠ USB PORTS</span>
-          <span class="warn-text">The Pi Zero has two micro-USB ports. <strong>Inner = data (OTG)</strong>, outer = power.
-            Plug your FC into the inner port. Plug your battery bank into the outer port.</span>
-        </div>
-      </section>
-
-      <!-- ===== LED REFERENCE ===== -->
-      <section id="led-reference" class="doc-section">
-        <h2 class="section-label">// 03 LED REFERENCE</h2>
-        <p>Only four patterns — designed to be unmistakable at a glance, even in direct sunlight.</p>
-
-        <div class="led-grid">
-          <div class="led-row">
-            <span class="led-icon booting">●</span>
-            <div>
-              <p class="led-name">Slow pulse <span class="muted">(1s on / 1s off)</span></p>
-              <p class="led-desc">Pi is booting. Wait ~60 seconds.</p>
-            </div>
-          </div>
-          <div class="led-row">
-            <span class="led-icon ready">●</span>
-            <div>
-              <p class="led-name">Solid on</p>
-              <p class="led-desc"><strong>Ready.</strong> Pi booted, waiting for FC. Plug in now.</p>
-            </div>
-          </div>
-          <div class="led-row">
-            <span class="led-icon syncing">●</span>
-            <div>
-              <p class="led-name">Steady fast blink</p>
-              <p class="led-desc">Sync in progress — copying, verifying, or erasing. <strong>Do not unplug.</strong></p>
-            </div>
-          </div>
-          <div class="led-row">
-            <span class="led-icon done">●</span>
-            <div>
-              <p class="led-name">Rapid burst → solid</p>
-              <p class="led-desc"><strong>Done.</strong> Safe to unplug. LED returns to solid ready state.</p>
-            </div>
-          </div>
-          <div class="led-row">
-            <span class="led-icon error">●</span>
-            <div>
-              <p class="led-name">SOS pattern <span class="muted">(repeating)</span></p>
-              <p class="led-desc">Error. Check the web UI or system logs for details.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ===== DOWNLOADING LOGS ===== -->
-      <section id="download-logs" class="doc-section">
-        <h2 class="section-label">// 04 DOWNLOADING LOGS</h2>
-
+        <h2 class="section-label">Setup for evaluation</h2>
+        <div class="info-box"><p><strong>Experimental:</strong> the current transfer path has known defects. Keep the controller's original data, disable automatic erasure and cleanup, and read the <a href="#compatibility">limitations</a> before connecting it.</p></div>
+        <h3>Hardware</h3>
+        <p>You need a Pi Zero W or Zero 2 W, a 16 GB+ microSD card, a suitable 5 V USB supply, an OTG adapter and a controller data cable. The primary development target is Betaflight logging to internal SPI flash.</p>
+        <h3>Flash and boot</h3>
         <ol class="numbered-list">
-          <li><strong>Connect</strong> your phone or laptop to the <code>LogFalcon</code> Wi-Fi network.</li>
-          <li><strong>Captive portal opens automatically</strong> — like airport Wi-Fi. If it doesn't, type
-            <strong><code>http://log.falcon</code></strong> in any browser.</li>
-          <li><strong>Browse sessions</strong> — grouped by FC (variant + UID), sorted by date.</li>
-          <li><strong>Download</strong> <code>.bbl</code> files → open in
-            <a href="https://github.com/betaflight/blackbox-log-viewer" target="_blank" rel="noopener">Blackbox Explorer</a>.</li>
+          <li><span>Download a Raspberry Pi image from <a href="https://github.com/proeugene/logfalcon/releases">Releases</a>. Check that the selected release includes an image, and verify it against any supplied checksums.</span></li>
+          <li><span>Flash it using Raspberry Pi Imager or Etcher. On the boot partition, optionally edit <code>logfalcon-config.txt</code> to set <code>SSID</code> and <code>PASSWORD</code>.</span></li>
+          <li><span>Insert the card and power the Pi through <strong>PWR IN</strong>. Wait for the hotspot; boot timing has not been established for this image.</span></li>
+          <li><span>Join <strong>LogFalcon</strong> Wi-Fi (default password <code>fpvpilot</code>), then open <a href="http://log.falcon">http://log.falcon</a> or <a href="http://192.168.4.1">http://192.168.4.1</a>.</span></li>
         </ol>
-
-        <div class="info-box" style="margin-top:20px;">
-          <span class="info-badge">📊 LIVE</span>
-          <span>While the FC is syncing, the dashboard shows <strong>real-time progress</strong> — connect to the hotspot during a sync to watch it live. No need to wait for the LED; you can see exactly how much has copied, the current speed, and estimated time remaining.</span>
-        </div>
-        <pre><code>┌─────────────────────────────────────────────────┐
-│  LogFalcon                    ⚙  [Syncing 45%] │
-├─────────────────────────────────────────────────┤
-│  Syncing flash… 45%  (2.1 / 4.0 MB)            │
-│  █████████████░░░░░░░░░░░░░░░                   │
-│                          1.2 MB/s · ~18s left   │
-└─────────────────────────────────────────────────┘</code></pre>
-        <p>The badge colour distinguishes each phase: <em>Finding FC…</em> (gray, pulsing) → <em>Syncing N%</em> (blue) → <em>Verifying…</em> (purple) → <em>Erasing…</em> (orange) → <em>Idle</em> (dim).</p>
-
-        <h3>Storage layout on the Pi</h3>
-        <pre><code>/mnt/logfalcon-logs/
-├── fc_BTFL_uid-12ab34cd/           ← Betaflight FC (by UID)
-│   ├── 2026-02-26_143012/
-│   │   ├── raw_flash.bbl           ← open in Blackbox Explorer
-│   │   └── manifest.json           ← metadata + SHA-256
-│   └── 2026-03-01_091000/
-├── fc_INAV_uid-aabb1122/           ← iNav FC
-│   └── 2026-03-02_101500/
-└── fc_BTFL_uid-deadbeef/           ← another FC
-    └── ...</code></pre>
-
-        <p>Each session includes a <code>manifest.json</code> with FC info, file size, SHA-256 checksum, erase status, and timing data.</p>
+        <h3>Before connecting a controller</h3>
+        <p>Use SSH to edit <code>/etc/logfalcon/logfalcon.toml</code>. Set these values in the existing file:</p>
+        <pre><code>erase_after_sync = false
+storage_pressure_cleanup = false</code></pre>
+        <p>Check the TOML carefully: invalid configuration can currently fall back to defaults, which enable both behaviours. For manual evaluation, <code>--dry-run</code> also skips erasure. These instructions do not repair the known transfer defects.</p>
+        <p>The supplied image uses SSH user <code>pi</code> and default password <code>logfalcon</code>. Change it with <code>passwd</code>. SSH and hotspot passwords are separate.</p>
       </section>
-
-      <!-- ===== CONFIGURATION ===== -->
-      <section id="configuration" class="doc-section">
-        <h2 class="section-label">// 05 CONFIGURATION</h2>
-
-        <p>Config lives at <code>/etc/logfalcon/logfalcon.toml</code>. Defaults work out of the box.</p>
-
-        <pre><code>[general]
-erase_after_sync = true               # false = copy only, don't erase
-serial_baud = 921600
-
-[hotspot]
-hotspot_ssid = "LogFalcon"
-hotspot_password = "fpvpilot"          # change this!
-
-[storage]
-storage_path = "/mnt/logfalcon-logs"
-min_free_space_mb = 200                # always keep this much free
-storage_pressure_cleanup = true        # auto-delete oldest when full
-
-[web]
-web_port = 80
-idle_shutdown_minutes = 0              # 0 = never auto-shutdown</code></pre>
-
-        <div class="config-table">
-          <div class="config-row">
-            <code>erase_after_sync</code>
-            <span>Set <code>false</code> for dry-run mode — copies logs but never erases the FC.</span>
-          </div>
-          <div class="config-row">
-            <code>min_free_space_mb</code>
-            <span>Sync is refused if the Pi has less than this free. Prevents filling the SD card.</span>
-          </div>
-          <div class="config-row">
-            <code>storage_pressure_cleanup</code>
-            <span>When enabled, auto-deletes the oldest sessions to make room for a new sync.</span>
-          </div>
-          <div class="config-row">
-            <code>idle_shutdown_minutes</code>
-            <span>Auto-shutdown the web server after N minutes of inactivity. 0 = disabled.</span>
-          </div>
-        </div>
+      <section id="first-sync" class="doc-section">
+        <h2 class="section-label">First transfer</h2>
+        <ol class="numbered-list">
+          <li><span>Confirm that the FC's Blackbox Device is <strong>SPI Flash</strong> and that automatic erasure and storage cleanup are disabled.</span></li>
+          <li><span>Connect the controller through the Pi's <strong>USB / OTG data port</strong>. The installed USB rule starts the transfer service automatically.</span></li>
+          <li><span>Keep the controller connected while copying. Check the service log for the outcome; the current dashboard and LED cannot reliably confirm completion.</span></li>
+          <li><span>Refresh the dashboard, download the saved <code>.bbl</code>, and open it in Blackbox Explorer. Preserve the original controller data during evaluation.</span></li>
+        </ol>
+        <pre><code># Follow transfer results over SSH
+journalctl -u 'logfalcon@*' -f</code></pre>
+        <p>When reporting a test, include the Pi model, FC model, firmware, bytes copied, time taken and whether the downloaded file opens correctly.</p>
       </section>
-
-      <!-- ===== COMPATIBILITY ===== -->
+      <section id="download-logs" class="doc-section">
+        <h2 class="section-label">Download logs</h2>
+        <p>Join the Pi's hotspot and open <code>http://log.falcon</code>. Refresh the saved-session list after a transfer, then choose <strong>Download .bbl</strong>. Details contains metadata and the manifest; Delete from Pi removes only that stored session.</p>
+        <p>A saved session is a raw flash dump, which may contain several flight logs. Open it in <a href="https://github.com/betaflight/blackbox-log-viewer">Blackbox Explorer</a>. Sessions are stored under <code>/mnt/logfalcon-logs/fc_VARIANT_uid-XXXXXXXX/DATE_TIME/</code>, with <code>raw_flash.bbl</code> and <code>manifest.json</code>.</p>
+        <p>The saved-file checksum compares received bytes with a reread of the saved file. It does not independently verify the FC's source data or prove that the dump decodes correctly.</p>
+      </section>
       <section id="compatibility" class="doc-section">
-        <h2 class="section-label">// 06 FC COMPATIBILITY</h2>
-
-        <div class="compat-grid">
-          <div class="compat-item">
-            <span class="compat-key">Firmware</span>
-            <span class="compat-val">Betaflight 4.0+ · iNav 2.6+</span>
-          </div>
-          <div class="compat-item">
-            <span class="compat-key">Blackbox device</span>
-            <span class="compat-val accent">SPI Flash only</span>
-          </div>
-          <div class="compat-item">
-            <span class="compat-key">Flash chips</span>
-            <span class="compat-val">W25Q128FV · W25Q64FV · M25P16</span>
-          </div>
-          <div class="compat-item">
-            <span class="compat-key">Protocol</span>
-            <span class="compat-val">MSP v1 / v2 · STM32 → ttyACM* · CP2102/CH340 → ttyUSB*</span>
-          </div>
-          <div class="compat-item">
-            <span class="compat-key">Not supported</span>
-            <span class="compat-val warn">FC-side SD card · Betaflight &lt; 4.0 · ArduPilot</span>
-          </div>
-        </div>
-
-        <div class="info-box" style="margin-top:24px">
-          <span class="info-badge">💡 HOW TO CHECK</span>
-          <span>In Betaflight/iNav Configurator → <strong>Blackbox</strong> tab. If it shows <code>FLASH</code> with
-            a size (16M, 64M, 128M), you're good. If it shows <code>SD CARD</code> or <code>NONE</code>,
-            LogFalcon can't read it.</span>
-        </div>
+        <h2 class="section-label">Compatibility and current limitations</h2>
+        <ul class="guide-list">
+          <li><strong>Betaflight / SPI flash:</strong> the main development target. The code rejects MSP API versions older than 1.41. That version check is not a hardware compatibility guarantee.</li>
+          <li><strong>Transfer defects:</strong> large sizes can produce zero-length read requests. Blackbox configuration currently parses the support byte as the storage-device type.</li>
+          <li><strong>iNav:</strong> flash-summary parsing needs correction. Treat support as unconfirmed.</li>
+          <li><strong>Unsupported:</strong> controller-side SD card logs and ArduPilot.</li>
+          <li><strong>Dashboard:</strong> web and sync services run separately without shared live status. Progress, errors and safe-to-unplug state cannot currently be reported here.</li>
+          <li><strong>Hardware evidence:</strong> Pi builds exist, but physical compatibility, power-loss behaviour and boot/transfer times require recorded tests.</li>
+        </ul>
+        <p>Report findings through <a href="https://github.com/proeugene/logfalcon/issues">GitHub Issues</a>. LogFalcon is independent of the Betaflight and iNav projects.</p>
       </section>
-
-      <!-- ===== TROUBLESHOOTING ===== -->
+      <section id="configuration" class="doc-section">
+        <h2 class="section-label">Configuration</h2>
+        <p>The installed file is <code>/etc/logfalcon/logfalcon.toml</code>. A supplied <code>--config</code> path is searched first, followed by the system file, local <code>config/logfalcon.toml</code> and defaults. Invalid files can currently be skipped.</p>
+        <pre><code># Recommended values for evaluation; current defaults differ
+ erase_after_sync = false
+ storage_pressure_cleanup = false
+ min_free_space_mb = 200
+ flash_read_compression = false</code></pre>
+        <p>Use the dashboard's Settings page to change the hotspot SSID and password. A Wi-Fi restart may disconnect the browser. If saving fails, update the Pi configuration over SSH and inspect the web-service log.</p>
+        <p>Leave <code>idle_shutdown_minutes = 0</code> during evaluation: the current web process cannot observe activity in the separate sync process.</p>
+        <p>See the repository's <a href="https://github.com/proeugene/logfalcon/blob/main/config/logfalcon.toml">configuration file</a> for all available settings and their current defaults.</p>
+      </section>
+      <section id="led-reference" class="doc-section">
+        <h2 class="section-label">LED reference</h2>
+        <p>The intended patterns are: slow pulse for boot, solid for ready, fast blink for work, a rapid burst followed by solid for completion, and SOS for error.</p>
+        <p><strong>Current limitation:</strong> LED access and persistence need hardware validation. The service restores the ready light after both success and failure. Use the service log to confirm the outcome.</p>
+      </section>
       <section id="troubleshooting" class="doc-section">
-        <h2 class="section-label">// 07 TROUBLESHOOTING</h2>
-
-        <details class="faq">
-          <summary>LED shows SOS / error pattern</summary>
-          <div class="faq-body">
-            <p>Check the sync service log:</p>
-            <pre><code>journalctl -u "logfalcon@ttyACM0" -n 50   # STM32 FCs
-journalctl -u "logfalcon@ttyUSB0" -n 50   # CP2102/CH340 FCs</code></pre>
-            <p>Common causes: bad USB cable, unsupported FC variant, FC not in MSP mode.</p>
-          </div>
-        </details>
-
-        <details class="faq">
-          <summary>FC not detected (no LED response after plug-in)</summary>
-          <div class="faq-body">
-            <ul>
-              <li>Make sure you're using the Pi's <strong>inner</strong> micro-USB port (OTG), not the power port.</li>
-              <li>Confirm your FC shows up as a serial port on a normal PC: <code>/dev/ttyACM0</code> (STM32) or <code>/dev/ttyUSB0</code> (CP2102/CH340).</li>
-              <li>Check the FC USB chip: <code>lsusb</code> — look for VID <code>0483</code> (STM32), <code>10c4</code> (CP2102), or <code>1a86</code> (CH340). All three are supported.</li>
-              <li>Try a shorter or better-quality USB cable.</li>
-            </ul>
-          </div>
-        </details>
-
-        <details class="faq">
-          <summary>Web UI not loading</summary>
-          <div class="faq-body">
-            <pre><code>journalctl -u logfalcon-web -f</code></pre>
-            <p>If the page won't load, try <strong><code>http://log.falcon</code></strong> or <code>http://192.168.4.1</code> directly.</p>
-          </div>
-        </details>
-
-        <details class="faq">
-          <summary>Sync seems slow</summary>
-          <div class="faq-body">
-            <p>The Pi Zero W's single-core CPU is the bottleneck. Typical times:</p>
-            <div class="timing-table">
-              <div class="timing-row"><span>1 MB</span><span>~10–20s</span></div>
-              <div class="timing-row"><span>2 MB</span><span>~30–40s</span></div>
-              <div class="timing-row"><span>4 MB</span><span>~50–80s</span></div>
-            </div>
-            <p>Pi Zero <strong>2</strong> W is about 2× faster. Also try a shorter USB cable.</p>
-          </div>
-        </details>
-
-        <details class="faq">
-          <summary>"FC uses SD card" error</summary>
-          <div class="faq-body">
-            <p>Your FC logs to an SD card, not internal flash. MSP can't read FC-side SD cards.</p>
-            <p>In Configurator, set <strong>Blackbox Device = SPI Flash</strong>, or remove the FC's SD card and read it directly.</p>
-          </div>
-        </details>
-
-        <details class="faq">
-          <summary>Can't SSH in / "connection refused"</summary>
-          <div class="faq-body">
-            <p>SSH is enabled by default. Default credentials: user <code>pi</code>, password <code>logfalcon</code>.</p>
-            <pre><code>ssh pi@logfalcon.local   # or ssh pi@192.168.4.1 via hotspot</code></pre>
-            <p>If SSH is not responding, re-enable it from the Pi console:</p>
-            <pre><code>sudo systemctl enable ssh --now</code></pre>
-          </div>
-        </details>
-
-        <details class="faq">
-          <summary>First boot shows "Please enter new username" on screen</summary>
-          <div class="faq-body">
-            <p>This shouldn't happen with the LogFalcon image — the <code>pi</code> user is pre-configured and the first-boot wizard is disabled. If you see it, enter username <code>pi</code> and password <code>logfalcon</code>. Then verify you used the correct <code>logfalcon-*.img.xz</code> image from GitHub Releases.</p>
-          </div>
-        </details>
-
-        <details class="faq">
-          <summary>"Flash is empty" message</summary>
-          <div class="faq-body">
-            <p>The FC flash has no data to sync. This is normal if you already synced or never flew with logging enabled.</p>
-            <p>Verify in Configurator that <strong>Blackbox Logging</strong> is enabled and fly a pack first.</p>
-          </div>
-        </details>
+        <h2 class="section-label">Troubleshooting and administration</h2>
+        <details class="faq"><summary>Hotspot or dashboard does not appear</summary><div class="faq-body"><p>Check the power supply and try <code>http://192.168.4.1</code> while connected to LogFalcon Wi-Fi. Open the address explicitly; automatic captive-portal opening is not guaranteed.</p><pre><code>journalctl -u logfalcon-web -n 50
+journalctl -u hostapd -n 50</code></pre></div></details>
+        <details class="faq"><summary>Controller is not detected or transfer fails</summary><div class="faq-body"><p>Use the Pi's data port and a known data cable. Check whether the controller appears as <code>/dev/ttyACM*</code> or <code>/dev/ttyUSB*</code>. Keep automatic erasure disabled and include the service log in a bug report.</p><pre><code>lsusb
+journalctl -u 'logfalcon@*' -n 100</code></pre></div></details>
+        <details class="faq"><summary>SSH and health checks</summary><div class="faq-body"><pre><code>ssh pi@192.168.4.1
+passwd
+curl http://127.0.0.1/health</code></pre><p>The default SSH password is <code>logfalcon</code>. Health reports information from the web process; an OK response does not establish transfer success.</p></div></details>
+        <details class="faq"><summary>Installing on an existing Raspberry Pi OS</summary><div class="faq-body"><p>The repository's <code>scripts/install.sh</code> installs packages, services and an AP-only network configuration. Review it before running it on an existing Pi; it changes system networking.</p><pre><code>sudo bash scripts/install.sh</code></pre><p>The matching <code>scripts/uninstall.sh</code> removes the installation. A fresh image is the simpler evaluation route.</p></div></details>
       </section>
-
-      <!-- ===== BUILDING FROM SOURCE ===== -->
       <section id="building" class="doc-section">
-        <h2 class="section-label">// 08 BUILDING FROM SOURCE</h2>
-
-        <p>LogFalcon is written in Go. Requires Go 1.23+.</p>
-
-        <h3>Clone and build</h3>
-        <pre><code>git clone https://github.com/proeugene/logfalcon
+        <h2 class="section-label">Development</h2>
+        <p>Requires Go 1.23+. All application code is Go, with a stdlib HTTP interface and embedded HTML templates. No JavaScript framework is required.</p>
+        <pre><code>git clone https://github.com/proeugene/logfalcon.git
 cd logfalcon
-make build          # native binary
-make build-pi       # cross-compile for Pi Zero W (ARM6)
-make build-pi2      # cross-compile for Pi Zero 2 W (ARM64)</code></pre>
-
-        <h3>Run tests</h3>
-        <pre><code>make test            # runs go test -race ./...
-make lint            # runs golangci-lint</code></pre>
-        <p>All tests run without hardware — serial ports, GPIO, and filesystem are mocked via interfaces.</p>
-
-        <h3>Install on a Pi</h3>
-        <pre><code>sudo bash scripts/install.sh</code></pre>
-        <p>Or to install a freshly built binary on a Pi you can already reach via SSH:</p>
-        <pre><code>scp bin/logfalcon-arm6 pi@logfalcon.local:/tmp/
-ssh pi@logfalcon.local 'sudo install -m 755 /tmp/logfalcon-arm6 /opt/logfalcon/logfalcon && sudo systemctl restart logfalcon-web'</code></pre>
-
-        <h3>Project structure</h3>
-        <pre><code>cmd/logfalcon/       CLI entry point
-internal/
-├── config/          TOML config loader
-├── msp/             MSP protocol: framing, CRC, Huffman, client
-├── fc/              FC detection and handshake
-├── sync/            10-step sync orchestrator
-├── storage/         Session dirs, manifest, stream writer
-├── web/             HTTP server, SSE, captive portal, downloads
-├── led/             LED state machine (sysfs + GPIO)
-└── util/            Disk space utilities</code></pre>
+make build
+make test
+make lint     # Requires golangci-lint
+make build-pi
+make build-pi2</code></pre>
+        <p>Tests run without hardware. The protocol, FC detection, storage, sync, web, LED and configuration code live in separate packages under <code>internal/</code>. Passing tests and builds do not validate real-device behaviour.</p>
+        <h3>Preview the dashboard locally</h3>
+        <pre><code>mkdir -p /tmp/logfalcon-preview
+LOGFALCON_STORAGE_PATH=/tmp/logfalcon-preview LOGFALCON_WEB_PORT=8080 ./bin/logfalcon --web</code></pre>
+        <p>Open <code>http://localhost:8080</code>. This previews the log browser; it does not emulate a controller, hotspot or live transfer.</p>
+        <h3>Build the image</h3>
+        <p>The image build uses pi-gen in Docker. From the repository:</p>
+        <pre><code>cd pi-gen
+bash build.sh</code></pre>
+        <p>The tag-triggered release workflow builds Linux ARM6, ARM64 and AMD64 binaries, builds and inspects the image, and checks required release assets. Inspect the workflow result rather than assuming a tag produced a working image.</p>
+        <p>See <a href="https://github.com/proeugene/logfalcon/blob/main/CONTRIBUTING.md">Contributing</a> and the <a href="https://github.com/proeugene/logfalcon/blob/main/RELEASE_CHECKLIST.md">release checklist</a> for further details.</p>
       </section>
-
-      <!-- ===== CLI ===== -->
       <section id="cli" class="doc-section">
-        <h2 class="section-label">// 09 CLI REFERENCE</h2>
-
-        <pre><code>logfalcon                              # sync (auto-detect port)
-logfalcon --port /dev/ttyACM0          # specific serial port
-logfalcon --dry-run                    # copy only, don't erase
-logfalcon --web                        # start web server only
-logfalcon --web --port 8080            # web server on custom port
-logfalcon --config /path/to/file.toml  # custom config file
-logfalcon --version                    # print version</code></pre>
-
-        <div class="config-table">
-          <div class="config-row">
-            <code>--web</code>
-            <span>Start the web UI server instead of running a sync.</span>
-          </div>
-          <div class="config-row">
-            <code>--port</code>
-            <span>Serial port path (sync mode) or listen port number (web mode).</span>
-          </div>
-          <div class="config-row">
-            <code>--dry-run</code>
-            <span>Copy the flash but skip erase. Useful for testing.</span>
-          </div>
-          <div class="config-row">
-            <code>--config</code>
-            <span>Path to TOML config file. Default search: <code>/etc/logfalcon/</code> → <code>./config/</code></span>
-          </div>
-          <div class="config-row">
-            <code>--version</code>
-            <span>Print version and exit.</span>
-          </div>
-        </div>
+        <h2 class="section-label">CLI reference</h2>
+        <pre><code>logfalcon --web                              # Log browser
+logfalcon --port /dev/ttyACM0 --dry-run        # Copy; skip erasure
+logfalcon --port /dev/ttyUSB0 --dry-run        # Explicit USB serial port
+logfalcon --config /path/to/logfalcon.toml --web
+logfalcon --version</code></pre>
+        <p>A serial transfer requires an explicit <code>--port</code>. <code>--dry-run</code> still copies data and does not disable storage-pressure cleanup; configure that separately.</p>
       </section>
-
     </main>
   </div>
-
-  <footer>
-    <span>LOGFALCON</span>
-    <span class="footer-sep">·</span>
-    <a href="https://github.com/proeugene/logfalcon" target="_blank" rel="noopener">GITHUB</a>
-    <span class="footer-sep">·</span>
-    <a href="https://github.com/proeugene/logfalcon/discussions" target="_blank" rel="noopener">DISCUSSIONS</a>
-    <span class="footer-sep">·</span>
-    <a href="https://ko-fi.com/logfalcon" target="_blank" rel="noopener">KO-FI ☕</a>
-    <span class="footer-sep">·</span>
-    <span>MIT</span>
-  </footer>
-
+  <footer><a href="index.html">LogFalcon</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon/issues">Report a problem</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon">Source code</a></footer>
 </body>
 </html>

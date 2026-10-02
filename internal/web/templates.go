@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"time"
 
 	"github.com/proeugene/logfalcon/internal/storage"
 )
@@ -14,7 +15,6 @@ type IndexParams struct {
 	UsedGB, FreeGB     float64
 	Pct                int
 	SessionsHTML       string
-	StatusMessage      string
 	StorageWarningHTML string
 	CSRFToken          string
 }
@@ -30,408 +30,134 @@ type SettingsParams struct {
 
 func esc(s string) string { return html.EscapeString(s) }
 
-// RenderIndex renders the main dashboard page.
+// RenderIndex renders the saved-log browser. Live status is intentionally not
+// displayed until the separate sync and web processes share a status source.
 func RenderIndex(params IndexParams) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LogFalcon</title>
+  <title>Saved logs — LogFalcon</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      margin: 0; padding: 0;
-      background: #0f0f12;
-      color: #e0e0e8;
-      min-height: 100vh;
-    }
-    header {
-      background: #1a1a24;
-      border-bottom: 1px solid #2e2e40;
-      padding: 14px 20px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky; top: 0; z-index: 100;
-    }
-    header h1 { margin: 0; font-size: 1.1rem; font-weight: 600; }
-    #status-badge {
-      font-size: 0.75rem;
-      padding: 4px 10px;
-      border-radius: 12px;
-      background: #2e2e40;
-      color: #a0a0b8;
-    }
-    #status-badge.syncing    { background: #1a3a5c; color: #60b0ff; }
-    #status-badge.identifying { background: #1a2a3a; color: #7090b0; animation: pulse 1.8s ease-in-out infinite; }
-    #status-badge.querying   { background: #1a2a3a; color: #7090b0; animation: pulse 1.8s ease-in-out infinite; }
-    #status-badge.erasing    { background: #3a2a10; color: #ffaa40; }
-    #status-badge.verifying  { background: #2a1a4a; color: #c060ff; }
-    #status-badge.error      { background: #3a1a1a; color: #ff6060; }
-    @keyframes pulse { 0%%,100%% { opacity:1; } 50%% { opacity:0.5; } }
-    main { max-width: 700px; margin: 0 auto; padding: 16px; }
-    .disk-info {
-      background: #1a1a24;
-      border: 1px solid #2e2e40;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      font-size: 0.85rem;
-      color: #a0a0b8;
-    }
-    .disk-bar-track {
-      background: #2e2e40;
-      border-radius: 4px;
-      height: 6px;
-      margin-top: 6px;
-      overflow: hidden;
-    }
-    .disk-bar-fill {
-      background: #4060d0;
-      height: 100%%;
-      border-radius: 4px;
-      transition: width 0.3s;
-    }
-    .help-card {
-      background: #141c2c;
-      border: 1px solid #294263;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      color: #b7d0f5;
-      font-size: 0.85rem;
-    }
-    .help-card strong { color: #ffffff; }
-    .help-card ol { margin: 10px 0 0 18px; padding: 0; }
-    .help-card li { margin-bottom: 6px; }
-    .warning-card {
-      background: #3a2a10;
-      border: 1px solid #704d15;
-      border-radius: 8px;
-      padding: 12px 16px;
-      margin-bottom: 16px;
-      color: #ffca80;
-      font-size: 0.85rem;
-    }
-    #status-detail {
-      margin-top: 6px;
-      color: #8f90a8;
-      font-size: 0.8rem;
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: #0f0f12; color: #e0e0e8; line-height: 1.5; }
+    header { background: #1a1a24; border-bottom: 1px solid #2e2e40; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; }
+    header h1 { margin: 0; font-size: 1.1rem; }
+    header a { color: #c0c0d8; padding: 10px 0; text-decoration: none; }
+    main { max-width: 700px; margin: 0 auto; padding: 20px 16px; }
+    h2 { font-size: 1rem; margin: 0 0 8px; }
+    p { margin: 0 0 12px; }
+    a { color: #a0c8ff; }
+    a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid #60b0ff; outline-offset: 3px; }
+    .status-card, .disk-info, .help-card, .warning-card { border: 1px solid #2e2e40; border-radius: 8px; background: #1a1a24; padding: 16px; margin-bottom: 20px; }
+    .status-card p, .help-card, .disk-info { color: #b5b5c8; font-size: 0.9rem; }
+    .status-card p:last-child { margin-bottom: 0; }
+    .status-card { border-color: #665126; }
+    .warning-card { background: #3a2a10; color: #ffca80; }
+    .logs-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .logs-header h2 { margin: 0; }
+    .refresh { padding: 12px 0; font-size: 0.9rem; }
     .fc-group { margin-bottom: 20px; }
-    .fc-group summary {
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-      color: #c0c0d8;
-      padding: 8px 0;
-      list-style: none;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      border-bottom: 1px solid #2e2e40;
-      user-select: none;
-    }
-    .fc-group summary::before { content: "\25b6"; font-size: 0.7rem; transition: transform 0.2s; }
-    .fc-group[open] summary::before { transform: rotate(90deg); }
-    .session-card {
-      background: #1a1a24;
-      border: 1px solid #2e2e40;
-      border-radius: 8px;
-      padding: 12px 14px;
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .session-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .session-title { font-size: 0.9rem; font-weight: 500; }
-    .session-meta { font-size: 0.75rem; color: #808098; display: flex; gap: 10px; flex-wrap: wrap; }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 8px;
-      font-size: 0.7rem;
-      background: #2e2e40;
-      color: #909098;
-    }
-    .badge.erased { background: #1a3a1a; color: #60d060; }
-    .badge.no-erase { background: #3a2a10; color: #c08030; }
-    .session-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-    button, a.btn {
-      display: inline-block;
-      padding: 6px 14px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      border: none;
-      text-decoration: none;
-      font-weight: 500;
-      transition: opacity 0.15s;
-    }
-    button:hover, a.btn:hover { opacity: 0.8; }
-    .btn-download { background: #2a4a80; color: #a0c8ff; }
-    .btn-manifest { background: #2e2e40; color: #a0a0b8; }
-    .btn-delete   { background: #4a1a1a; color: #ff8080; }
-    .empty-state {
-      text-align: center;
-      padding: 48px 24px;
-      color: #505068;
-    }
-    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
-    .empty-state ol {
-      display: inline-block;
-      margin: 12px auto 0;
-      padding-left: 18px;
-      text-align: left;
-      color: #7f8098;
-    }
-    .progress-bar-track {
-      background: #2e2e40;
-      border-radius: 3px;
-      height: 4px;
-      overflow: hidden;
-      display: none;
-    }
-    .progress-bar-fill {
-      background: #60b0ff;
-      height: 100%%;
-      width: 0%%;
-      border-radius: 3px;
-      transition: width 0.5s;
-    }
+    summary { cursor: pointer; min-height: 44px; padding: 10px 0; }
+    .fc-group > summary { font-weight: 600; border-bottom: 1px solid #2e2e40; overflow-wrap: anywhere; }
+    .session-card { background: #1a1a24; border: 1px solid #2e2e40; border-radius: 8px; padding: 16px; margin-top: 10px; }
+    .session-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+    .session-title { font-weight: 500; }
+    .session-size { color: #b5b5c8; font-size: 0.85rem; margin-bottom: 12px; }
+    .badge { padding: 3px 8px; border-radius: 6px; font-size: 0.75rem; background: #2e2e40; color: #c0c0d8; }
+    .badge.erased { background: #1a3a1a; color: #8de08d; }
+    .badge.no-erase { background: #2e2e40; color: #c0c0d8; }
+    button, a.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border-radius: 6px; border: 1px solid transparent; font: inherit; font-size: 0.9rem; text-decoration: none; cursor: pointer; }
+    .btn-download { background: #2a4a80; color: #d7e9ff; }
+    .btn-manifest { background: #2e2e40; color: #d0d0e0; }
+    .btn-delete { background: transparent; border-color: #754141; color: #ffb0b0; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .session-details { margin-top: 8px; font-size: 0.85rem; color: #b5b5c8; }
+    .session-meta { display: flex; flex-direction: column; gap: 6px; overflow-wrap: anywhere; margin-bottom: 12px; }
+    .session-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .empty-state { padding: 24px 16px; border: 1px dashed #45455c; border-radius: 8px; margin-bottom: 20px; color: #b5b5c8; }
+    .empty-state strong { color: #e0e0e8; }
+    .disk-bar-track { background: #2e2e40; border-radius: 4px; height: 6px; margin-top: 10px; overflow: hidden; }
+    .disk-bar-fill { background: #607edb; height: 100%%; }
+    .help-card ol { padding-left: 22px; }
+    .help-card li { margin-bottom: 8px; }
+    @media (max-width: 400px) { .session-header { align-items: flex-start; flex-direction: column; } }
   </style>
 </head>
 <body>
-
-<header>
-  <h1>LogFalcon</h1>
-  <a href="/settings" style="color:#a0a0b8; text-decoration:none; font-size:1.2rem;" title="Settings">&#9881;</a>
-  <span id="status-badge">Idle</span>
-</header>
-
-<div id="idle-shutdown-banner" style="display:none; background:#1a1400; border-bottom:1px solid #4a3a00; padding:6px 20px; text-align:center; font-size:0.8rem; color:#d4a017;">
-  <span id="idle-shutdown-text"></span>
-</div>
-
-<div id="version-warning-banner" style="display:none; background:#3a2a10; border-bottom:1px solid #704d15; padding:8px 20px; font-size:0.8rem; color:#ffca80; text-align:center;">
-  ⚠ <span id="version-warning-text"></span>
-</div>
-
-<div id="sync-progress-container" style="background:#1a2a3a; padding:0 20px; display:none;">
-  <div style="max-width:700px; margin:0 auto; padding:8px 0; font-size:0.8rem; color:#60b0ff;">
-    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;">
-      <span id="sync-progress-label">Syncing...</span>
-      <span id="sync-progress-meta" style="color:#a0c8f0; font-size:0.75rem;"></span>
-    </div>
-    <div class="progress-bar-track" id="progress-track" style="display:block;">
-      <div class="progress-bar-fill" id="progress-fill"></div>
-    </div>
-  </div>
-</div>
-
+<header><h1>LogFalcon</h1><a href="/settings">Settings</a></header>
 <main>
-  <div class="disk-info">
-    <span>Pi SD card: <strong>%s GB used</strong> / %s GB free</span>
-    <div class="disk-bar-track">
-      <div class="disk-bar-fill" style="width: %d%%"></div>
-    </div>
-    <div id="status-detail">%s</div>
-    <div id="fc-identity" style="display:none; margin-top:8px; padding:6px 8px; background:#0e1a2a; border-radius:6px; font-size:0.75rem; color:#6080a0;">
-      <span id="fc-identity-text"></span>
-    </div>
-  </div>
-
-  <div class="help-card">
-    <strong>Field quick start</strong>
+  <section class="status-card" aria-labelledby="transfer-title">
+    <h2 id="transfer-title">Transfer status</h2>
+    <p><strong>Live transfer status is unavailable in this version.</strong></p>
+    <p>This page lists saved sessions. It cannot confirm that copying or erasing has finished. Keep the FC connected until the result is confirmed in the service log.</p>
+  </section>
+  %s
+  <section aria-labelledby="logs-title">
+    <div class="logs-header"><h2 id="logs-title">Saved logs</h2><a class="refresh" href="/">Refresh list</a></div>
+    %s
+  </section>
+  <section class="disk-info" aria-labelledby="storage-title">
+    <h2 id="storage-title">Pi storage</h2>
+    <span><strong>%s GB free</strong> · %s GB used</span>
+    <div class="disk-bar-track" aria-hidden="true"><div class="disk-bar-fill" style="width: %d%%"></div></div>
+  </section>
+  <details class="help-card">
+    <summary>Connection and download help</summary>
     <ol>
-      <li>Power on the Pi and wait up to 90 seconds for Wi-Fi to appear.</li>
-      <li>Join the hotspot, then plug the FC into the Pi's inner OTG USB port.</li>
-      <li>Wait for the LED success pattern before unplugging the FC.</li>
-      <li>Download the <code>.bbl</code> later from this page and open it in Blackbox Explorer.</li>
+      <li>Connect to the Pi's Wi-Fi and open <code>http://log.falcon</code>.</li>
+      <li>Use the inner USB / OTG data port for the FC; the other port powers the Pi.</li>
+      <li>After confirming completion, refresh the list and download the <code>.bbl</code>.</li>
+      <li>Open it in Blackbox Explorer. Preserve the FC's original data during evaluation.</li>
     </ol>
-  </div>
-
-  %s
-
-  %s
+    <p>For evaluation, disable automatic erase and storage cleanup in the Pi configuration. LED completion reporting also needs validation.</p>
+  </details>
 </main>
-
 <script>
-  function fmtBytes(b) {
-    if (b >= 1048576) return (b / 1048576).toFixed(1) + ' MB';
-    if (b >= 1024) return (b / 1024).toFixed(0) + ' KB';
-    return b + ' B';
-  }
-  function fmtSpeed(bps) {
-    if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
-    if (bps >= 1024) return (bps / 1024).toFixed(0) + ' KB/s';
-    return Math.round(bps) + ' B/s';
-  }
-  function fmtETA(sec) {
-    if (sec <= 0) return '';
-    if (sec >= 60) return '~' + Math.ceil(sec / 60) + 'm remaining';
-    return '~' + sec + 's remaining';
-  }
-
-  function updateStatus() {
-    fetch('/status')
-      .then(r => r.json())
-      .then(data => {
-        const badge = document.getElementById('status-badge');
-        const detail = document.getElementById('status-detail');
-        const state = data.state || 'idle';
-        const progress = data.progress || 0;
-        const labels = {
-          idle: 'Idle',
-          identifying: 'Finding FC\u2026',
-          querying: 'Reading flash\u2026',
-          syncing: 'Syncing\u2026',
-          verifying: 'Verifying\u2026',
-          erasing: 'Erasing\u2026',
-          error: 'Error'
-        };
-        detail.textContent = data.message || 'Ready for the next sync.';
-        badge.textContent = (labels[state] || state) +
-          (state === 'syncing' && progress > 0 ? ' ' + progress + '%%' : '');
-        badge.className = '';
-        if (state === 'syncing') badge.classList.add('syncing');
-        else if (state === 'identifying') badge.classList.add('identifying');
-        else if (state === 'querying') badge.classList.add('querying');
-        else if (state === 'erasing') badge.classList.add('erasing');
-        else if (state === 'verifying') badge.classList.add('verifying');
-        else if (state === 'error') badge.classList.add('error');
-
-        const progressContainer = document.getElementById('sync-progress-container');
-        const progressFill = document.getElementById('progress-fill');
-        const progressLabel = document.getElementById('sync-progress-label');
-        const progressMeta = document.getElementById('sync-progress-meta');
-        if (state === 'syncing') {
-          progressContainer.style.display = 'block';
-          progressFill.style.width = progress + '%%';
-          const copied = data.bytes_copied || 0;
-          const total = data.total_bytes || 0;
-          const speed = data.speed_bps || 0;
-          const eta = data.eta_sec || 0;
-          progressLabel.textContent = 'Syncing flash\u2026 ' + progress + '%%' +
-            (total > 0 ? '  (' + fmtBytes(copied) + ' / ' + fmtBytes(total) + ')' : '');
-          const parts = [];
-          if (speed > 0) parts.push(fmtSpeed(speed));
-          if (eta > 0) parts.push(fmtETA(eta));
-          progressMeta.textContent = parts.join('  \u00b7  ');
-        } else {
-          progressContainer.style.display = 'none';
-          if (progressMeta) progressMeta.textContent = '';
-        }
-
-        const shutBanner = document.getElementById('idle-shutdown-banner');
-        const shutText = document.getElementById('idle-shutdown-text');
-        const shutMin = data.idle_shutdown_minutes || 0;
-        const shutSec = data.idle_shutdown_remaining_sec;
-        if (shutMin > 0 && shutSec != null) {
-          const m = Math.floor(shutSec / 60);
-          const s = shutSec %% 60;
-          shutText.textContent = '\u23fb Auto-shutdown in ' + m + ' min ' + s + ' sec \u2014 activity resets timer';
-          shutBanner.style.display = 'block';
-          if (shutSec < 60) {
-            shutBanner.style.background = '#2a0a0a';
-            shutBanner.style.borderBottomColor = '#6a1a1a';
-            shutText.style.color = '#e04040';
-          } else {
-            shutBanner.style.background = '#1a1400';
-            shutBanner.style.borderBottomColor = '#4a3a00';
-            shutText.style.color = '#d4a017';
-          }
-        } else {
-          shutBanner.style.display = 'none';
-        }
-
-        // FC identity line — shown once handshake completes.
-        const fcIdentity = document.getElementById('fc-identity');
-        const fcIdentityText = document.getElementById('fc-identity-text');
-        if (data.fc_variant) {
-          let fc = data.fc_variant;
-          if (data.fc_firmware_version) fc += ' ' + data.fc_firmware_version;
-          if (data.fc_api_version) fc += '  (API ' + data.fc_api_version + ')';
-          fcIdentityText.textContent = '\u26a1 FC: ' + fc;
-          fcIdentity.style.display = 'block';
-        } else {
-          fcIdentity.style.display = 'none';
-        }
-
-        // Version warning banner — amber, persists until page reload.
-        const warnBanner = document.getElementById('version-warning-banner');
-        const warnText = document.getElementById('version-warning-text');
-        if (data.warning) {
-          warnText.textContent = data.warning;
-          warnBanner.style.display = 'block';
-        }
-      })
-      .catch(() => {});
-  }
-  updateStatus();
-  setInterval(updateStatus, 3000);
-
   function deleteSession(sessionId, btn) {
-    if (!confirm('Delete this session from the Pi?\n\nMake sure you have downloaded the .bbl file first.')) return;
+    if (!confirm('Delete this saved session from the Pi?\n\nDownload the .bbl first. The FC is not changed.')) return;
     btn.disabled = true;
-    btn.textContent = 'Deleting\u2026';
+    btn.textContent = 'Deleting…';
     fetch('/sessions/' + sessionId, {
-      method: 'DELETE',
-      headers: { 'X-CSRF-Token': '%s' }
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.deleted) {
-          const card = btn.closest('.session-card');
-          card.style.transition = 'opacity 0.3s';
-          card.style.opacity = '0';
-          setTimeout(() => { card.remove(); location.reload(); }, 300);
-        } else {
-          btn.disabled = false;
-          btn.textContent = 'Delete from Pi';
-          alert('Delete failed.');
-        }
-      })
-      .catch(() => {
-        btn.disabled = false;
-        btn.textContent = 'Delete from Pi';
-        alert('Delete request failed.');
-      });
+      method: 'DELETE', headers: { 'X-CSRF-Token': '%s' }
+    }).then(r => {
+      if (!r.ok) throw new Error('Delete failed');
+      return r.json();
+    }).then(data => {
+      if (!data.deleted) throw new Error('Delete failed');
+      location.reload();
+    }).catch(() => {
+      btn.disabled = false;
+      btn.textContent = 'Delete from Pi';
+      alert('Could not confirm deletion. Check your Wi-Fi connection and refresh the list.');
+    });
   }
 </script>
 </body>
-</html>`,
-		fmt.Sprintf("%.1f", params.UsedGB),
-		fmt.Sprintf("%.1f", params.FreeGB),
-		params.Pct,
-		esc(params.StatusMessage),
-		params.StorageWarningHTML,
-		params.SessionsHTML,
-		esc(params.CSRFToken),
-	)
+</html>`, params.StorageWarningHTML, params.SessionsHTML,
+		fmt.Sprintf("%.1f", params.FreeGB), fmt.Sprintf("%.1f", params.UsedGB), params.Pct, esc(params.CSRFToken))
+}
+
+func controllerLabel(dir string) string {
+	variant, uid, ok := strings.Cut(strings.TrimPrefix(dir, "fc_"), "_uid-")
+	if !ok {
+		return dir
+	}
+	switch variant {
+	case "BTFL":
+		variant = "Betaflight"
+	case "INAV":
+		variant = "iNav"
+	}
+	return variant + " · controller " + uid
 }
 
 // RenderSessions renders session cards HTML fragment.
 func RenderSessions(sessions []*storage.Session) string {
 	if len(sessions) == 0 {
-		return `<div class="empty-state">` +
-			`<div class="icon">📭</div>` +
-			`<p>No sessions yet.</p>` +
-			`<ol>` +
-			`<li>Power on the Pi and give the hotspot up to 90 seconds to appear.</li>` +
-			`<li>Join the Wi-Fi network, then plug the FC into the Pi&apos;s inner OTG port.</li>` +
-			`<li>Make sure the FC is logging to SPI flash, not an FC-side SD card.</li>` +
-			`<li>Wait for the LED success pattern, then refresh this page.</li>` +
-			`</ol></div>`
+		return `<div class="empty-state"><p><strong>No saved sessions yet.</strong></p>` +
+			`<p>After a completed transfer, refresh this list. Only sessions with a readable manifest appear here.</p></div>`
 	}
 
 	var b strings.Builder
@@ -442,7 +168,7 @@ func RenderSessions(sessions []*storage.Session) string {
 				b.WriteString("</div></details>")
 			}
 			currentFC = sess.FCDir
-			fmt.Fprintf(&b, `<details class="fc-group" open><summary>%s</summary><div>`, esc(sess.FCDir))
+			fmt.Fprintf(&b, `<details class="fc-group" open><summary>%s</summary><div>`, esc(controllerLabel(sess.FCDir)))
 		}
 
 		var (
@@ -460,14 +186,17 @@ func RenderSessions(sessions []*storage.Session) string {
 		fileMB := fmt.Sprintf("%.1f", float64(fileSize)/1048576)
 
 		erasedCls := "no-erase"
-		erasedTxt := "Not erased"
-		erasedTitle := "The log was copied safely, but the FC flash still needs attention."
+		erasedTxt := "No erase recorded"
+		erasedTitle := "The manifest does not record a completed FC erase."
 		if erased {
 			erasedCls = "erased"
-			erasedTxt = "Erased"
-			erasedTitle = "Flash copy verified and FC erase completed."
+			erasedTxt = "FC erased"
+			erasedTitle = "The manifest records a completed FC erase."
 		}
 
+		if !erased && sess.Manifest != nil && sess.Manifest.EraseAttempted {
+			erasedTxt = "Erase unconfirmed"
+		}
 		shaHTML := ""
 		if sha256 != "" {
 			short := sha256
@@ -485,7 +214,13 @@ func RenderSessions(sessions []*storage.Session) string {
 			)
 		}
 
+		if sess.BBLPath == nil {
+			bblHTML = `<p>Log file unavailable.</p>`
+		}
 		title := strings.ReplaceAll(sess.SessionDir, "_", " ")
+		if stamp, err := time.Parse("2006-01-02_150405", sess.SessionDir); err == nil {
+			title = stamp.Format("2 Jan 2006 · 15:04:05")
+		}
 
 		fmt.Fprintf(&b,
 			`<div class="session-card">`+
@@ -493,22 +228,20 @@ func RenderSessions(sessions []*storage.Session) string {
 				`<span class="session-title">%s</span>`+
 				`<span class="badge %s" title="%s">%s</span>`+
 				`</div>`+
-				`<div class="session-meta">`+
-				`<span>%s MB</span>`+
-				`<span>API %s</span>`+
+				`<div class="session-size">%s MB</div>`+
 				`%s`+
-				`</div>`+
+				`<details class="session-details"><summary>Details and actions</summary>`+
+				`<div class="session-meta"><span>MSP API %s</span>%s</div>`+
 				`<div class="session-actions">`+
-				`%s`+
 				`<a class="btn btn-manifest" href="/download/%s/manifest.json">Manifest</a>`+
 				`<button class="btn-delete" onclick="deleteSession('%s', this)">Delete from Pi</button>`+
-				`</div></div>`,
+				`</div></details></div>`,
 			esc(title),
 			erasedCls, esc(erasedTitle), erasedTxt,
 			fileMB,
+			bblHTML,
 			esc(fcVer),
 			shaHTML,
-			bblHTML,
 			esc(sess.SessionID),
 			esc(sess.SessionID),
 		)

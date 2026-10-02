@@ -193,6 +193,9 @@ func TestDownloadValidFile(t *testing.T) {
 
 func TestIndexPage(t *testing.T) {
 	s, _ := newTestServer(t)
+	// The web process's local status cannot confirm a separate sync job's result.
+	lfSync.SetStatus("idle", 0, "Sync complete — safe to unplug and fly again.")
+	t.Cleanup(func() { lfSync.SetStatus("idle", 0, "Ready for the next sync.") })
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, req)
@@ -203,6 +206,43 @@ func TestIndexPage(t *testing.T) {
 	body := w.Body.String()
 	if !containsStr(body, "LogFalcon") {
 		t.Error("index page should contain 'LogFalcon'")
+	}
+	if !containsStr(body, "Live transfer status is unavailable") {
+		t.Error("index must explain that live completion cannot be confirmed")
+	}
+	if containsStr(body, "safe to unplug") {
+		t.Error("index must not render unrelated process-local completion status")
+	}
+}
+
+func TestSessionEraseOutcomes(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		attempted bool
+		completed bool
+		want      string
+	}{
+		{"not attempted", false, false, "No erase recorded"},
+		{"attempted without confirmation", true, false, "Erase unconfirmed"},
+		{"completed", true, true, "FC erased"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := RenderSessions([]*storage.Session{{
+				FCDir:      "fc_BTFL_uid-abc12345",
+				SessionID:  "fc_BTFL_uid-abc12345/2026-10-02_120000",
+				SessionDir: "2026-10-02_120000",
+				Manifest: &storage.Manifest{
+					EraseAttempted: tc.attempted,
+					EraseCompleted: tc.completed,
+				},
+			}})
+			if !containsStr(body, tc.want) {
+				t.Fatalf("session should report %q", tc.want)
+			}
+			if !containsStr(body, "Log file unavailable") || containsStr(body, "Download .bbl") {
+				t.Error("a manifest without a saved file must not offer a log download")
+			}
+		})
 	}
 }
 

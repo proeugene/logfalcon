@@ -478,3 +478,13 @@
 .nav-link.active {
   color: var(--accent);
 }
+
+.guide-list { padding-left: 20px; color: #a9bdc8; font-size: 14px; line-height: 1.7; }
+.guide-list li { margin-bottom: 14px; }
+.guide-list strong { color: var(--text); }
+.guide-body > *, .guide-content { min-width: 0; }
+.guide-content code { overflow-wrap: anywhere; }
+.guide-content pre code { overflow-wrap: normal; }
+.info-box p { margin-bottom: 0; }
+.toc a { padding: 12px 0; }
+@media (max-width: 600px) { .guide-header { padding: 40px 20px 32px; } .guide-body { padding: 0 20px 40px; } .guide-header h1 { font-size: 32px; } .faq-body { padding: 0 16px 16px; } .guide-content pre { padding: 16px; } }

@@ -12,32 +12,32 @@ on:
         default: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   lint:
     name: Go Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.3'
 
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@db9de0fc1a667e1a49d2291a1a042dff081d78f6 # v9
         with:
-          version: v1.64.8
+          version: v2.15.0
 
   test:
     name: Go Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.3'
 
       - name: Run tests with race detector
         run: go test -race -count=1 ./...
@@ -46,15 +46,15 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.3'
 
       - name: Security scan — govulncheck
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./...
 
   build-binaries:
@@ -75,11 +75,11 @@ jobs:
             goarch: amd64
             suffix: amd64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.3'
 
       - name: Build
         env:
@@ -88,8 +88,8 @@ jobs:
           GOARM: ${{ matrix.goarm }}
         run: |
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
-          COMMIT=$(git rev-parse --short HEAD)
-          go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildCommit=${COMMIT}" \
+          COMMIT=$(git rev-parse HEAD)
+          CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildCommit=${COMMIT}" \
             -o logfalcon-${{ matrix.suffix }} ./cmd/logfalcon
 
       - name: Binary size gate
@@ -107,7 +107,7 @@ jobs:
           echo "Binary size OK: ${SIZE_MB} MB <= ${LIMIT_MB} MB"
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: logfalcon-${{ matrix.suffix }}
           path: logfalcon-${{ matrix.suffix }}
@@ -119,11 +119,11 @@ jobs:
     needs: [lint, test, govulncheck]
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.27.3'
 
       - name: Free disk space
         run: |
@@ -159,7 +159,11 @@ jobs:
           echo "Binary size OK: ${SIZE_MB} MB <= ${LIMIT_MB} MB"
 
       - name: Clone pi-gen
-        run: git clone --depth 1 --branch bookworm https://github.com/RPi-Distro/pi-gen.git pi-gen/pi-gen-repo
+        run: |
+          git init pi-gen/pi-gen-repo
+          git -C pi-gen/pi-gen-repo remote add origin https://github.com/RPi-Distro/pi-gen.git
+          git -C pi-gen/pi-gen-repo fetch --depth 1 origin 1c2abf50924d5bfee3527657af74ddfb1da52904
+          git -C pi-gen/pi-gen-repo checkout --detach FETCH_HEAD
 
       - name: Configure pi-gen
         run: |
@@ -194,10 +198,10 @@ jobs:
             exit 1
           fi
 
-          # Install PiShrink pinned to a specific commit (v0.1.3 — d2c55e5)
+          # Install PiShrink pinned to a specific commit (5f358d03eed4b7334657ee93867826a2b42f112a)
           # instead of the mutable master branch.
           wget -qO /usr/local/bin/pishrink.sh \
-            https://raw.githubusercontent.com/Drewsif/PiShrink/d2c55e5/pishrink.sh
+            https://raw.githubusercontent.com/Drewsif/PiShrink/5f358d03eed4b7334657ee93867826a2b42f112a/pishrink.sh
           chmod +x /usr/local/bin/pishrink.sh
 
           RAW_SIZE=$(du -h "$IMAGE_FILE" | cut -f1)
@@ -240,21 +244,12 @@ jobs:
             echo "IMAGE_PATH=pi-gen/pi-gen-repo/deploy/${IMAGE_FILE}.xz"
           } >> "$GITHUB_ENV"
 
-      - name: Inspect image (non-gating for manual runs)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        run: |
-          cd pi-gen/pi-gen-repo/deploy
-          bash "$GITHUB_WORKSPACE/scripts/inspect-image.sh" "${IMAGE_FILE}.xz" || true
-
-      - name: Inspect image (gating for tag releases)
-        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
-        run: |
-          cd pi-gen/pi-gen-repo/deploy
-          bash "$GITHUB_WORKSPACE/scripts/inspect-image.sh" "${IMAGE_FILE}.xz"
+      - name: Inspect exact image
+        run: bash scripts/inspect-image.sh "${{ env.IMAGE_PATH }}"
 
       - name: Upload image artifact
         if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.upload_artifact) }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: logfalcon-image
           path: ${{ env.IMAGE_PATH }}
@@ -262,14 +257,16 @@ jobs:
 
   release:
     name: Create Release
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     needs: [build-binaries, build-image]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts/
           pattern: logfalcon-*
@@ -278,19 +275,26 @@ jobs:
         run: |
           mkdir -p release-assets
           find artifacts -type f -name 'logfalcon-*' -exec cp {} release-assets/ \;
+          cp system/*.service system/*.timer system/*.sh system/*.rules system/journald.conf release-assets/
+          cp config/logfalcon.toml release-assets/logfalcon-default.toml
+          cp boot/logfalcon-config.txt release-assets/logfalcon-boot-config.txt
+          printf '%s\n%s\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" > release-assets/logfalcon-build.txt
+          git archive --format=tar.gz --prefix=logfalcon/ HEAD > release-assets/logfalcon-source.tar.gz
+          git log -1 --format='%H%n%s' > release-assets/logfalcon-source-commit.txt
+          cp CHANGELOG.md release-assets/logfalcon-changelog.md
           ls -la release-assets/
 
       - name: Generate checksums
         run: |
           cd release-assets
-          sha256sum logfalcon-* > checksums.txt
+          sha256sum -- * > checksums.txt
           cd ..
           cat release-assets/checksums.txt
 
       - name: Assert release assets
         run: |
           cd release-assets
-          required=("logfalcon-arm6" "logfalcon-arm64" "logfalcon-amd64" "checksums.txt")
+          required=("logfalcon-arm6" "logfalcon-arm64" "logfalcon-amd64" "logfalcon-build.txt" "logfalcon-source.tar.gz" "50-logfalcon.rules" "logfalcon-config-apply.service" "checksums.txt")
           for f in "${required[@]}"; do
             if [ ! -f "$f" ]; then
               echo "::error::Missing required release asset: $f"
@@ -305,9 +309,12 @@ jobs:
           find . -maxdepth 1 -type f | sort
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: release-assets/*
           generate_release_notes: true
+          body_path: release-assets/logfalcon-changelog.md
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

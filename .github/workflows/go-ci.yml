@@ -14,28 +14,40 @@ jobs:
     name: Go Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.3"
 
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@db9de0fc1a667e1a49d2291a1a042dff081d78f6 # v9
         with:
-          version: v1.64.8
+          version: v2.15.0
 
   test:
     name: Go Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.3"
 
       - name: Run tests with race detector
         run: go test -race -coverprofile=cover.out -covermode=atomic ./...
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Bounded decoder fuzzing
+        run: go test ./internal/msp -run='^$' -fuzz=FuzzFrameDecoder -fuzztime=20s -parallel=2
+
+      - name: Linux integration tests
+        run: go test -v ./internal/integration ./internal/settings
+
+      - name: ShellCheck
+        run: shellcheck install.sh scripts/install.sh system/config-apply.sh system/wifi-init.sh
 
       - name: Print coverage
         run: go tool cover -func=cover.out | grep total
@@ -59,11 +71,11 @@ jobs:
             goarm: ""
             suffix: amd64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.25.x"
+          go-version: "1.27.3"
 
       - name: Build
         env:
@@ -72,12 +84,12 @@ jobs:
           GOARM: ${{ matrix.goarm }}
         run: |
           VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
-          COMMIT=$(git rev-parse --short HEAD)
-          go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildCommit=${COMMIT}" \
+          COMMIT=$(git rev-parse HEAD)
+          CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildCommit=${COMMIT}" \
             -o logfalcon-${{ matrix.suffix }} ./cmd/logfalcon
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: logfalcon-${{ matrix.suffix }}
           path: logfalcon-${{ matrix.suffix }}

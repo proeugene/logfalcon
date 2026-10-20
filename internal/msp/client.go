@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log/slog"
 	"time"
 )
 
@@ -46,6 +47,7 @@ type Client struct {
 	pending   map[uint16]*Frame
 	timeout   time.Duration
 	FCVariant string // "BTFL" or "INAV", set after detection
+	deadline  time.Time
 }
 
 // NewClient creates a Client with the given serial port and response timeout.
@@ -61,17 +63,27 @@ func NewClient(port SerialPort, timeout time.Duration) *Client {
 // Send encodes and writes an MSP v1 request frame to the serial port.
 func (c *Client) Send(code byte, payload []byte) error {
 	data := EncodeV1(code, payload)
-	_, err := c.port.Write(data)
-	return err
+	return c.writeFrame(data, uint16(code))
 }
 
 // SendV2 encodes and writes an MSP v2 request frame to the serial port.
 // V2 frames use a 16-bit length field, enabling responses larger than 255 bytes.
 func (c *Client) SendV2(code uint16, payload []byte) error {
 	data := EncodeV2(code, payload)
-	_, err := c.port.Write(data)
+	return c.writeFrame(data, code)
+}
+
+func (c *Client) writeFrame(data []byte, code uint16) error {
+	n, err := c.port.Write(data)
+	if err == nil && n != len(data) {
+		err = io.ErrShortWrite
+	}
+	slog.Debug("MSP request", "code", code, "bytes", len(data), "written", n, "ok", err == nil)
 	return err
 }
+
+// SetDeadline bounds subsequent receive operations as well as their per-request timeout.
+func (c *Client) SetDeadline(deadline time.Time) { c.deadline = deadline }
 
 // Receive blocks until a response frame with the given code arrives or the
 // timeout expires. Decoded frames for other codes are buffered in pending.
@@ -83,6 +95,9 @@ func (c *Client) Receive(code uint16) (*Frame, error) {
 	}
 
 	deadline := time.Now().Add(c.timeout)
+	if !c.deadline.IsZero() && c.deadline.Before(deadline) {
+		deadline = c.deadline
+	}
 	buf := make([]byte, 4096)
 
 	for time.Now().Before(deadline) {
@@ -96,6 +111,10 @@ func (c *Client) Receive(code uint16) (*Frame, error) {
 
 		// Drain decoded frames into the pending map.
 		for _, f := range c.decoder.Frames {
+			if f.Direction == MSPDirectionError && f.Code == code {
+				c.decoder.Frames = c.decoder.Frames[:0]
+				return nil, &Error{Message: fmt.Sprintf("FC rejected MSP code %d", code)}
+			}
 			if f.Direction == MSPDirectionFromFC {
 				fc := f // copy
 				c.pending[f.Code] = &fc
@@ -106,7 +125,11 @@ func (c *Client) Receive(code uint16) (*Frame, error) {
 		// Check if our target arrived.
 		if f, ok := c.pending[code]; ok {
 			delete(c.pending, code)
+			slog.Debug("MSP response", "code", code, "payload_bytes", len(f.Payload))
 			return f, nil
+		}
+		if n == 0 {
+			time.Sleep(time.Millisecond)
 		}
 	}
 
@@ -184,10 +207,16 @@ func (c *Client) GetBlackboxConfig() (deviceType int, err error) {
 	if err != nil {
 		return 0, err
 	}
-	if len(f.Payload) < 1 {
+	if len(f.Payload) < 2 {
 		return 0, &Error{Message: "MSP_BLACKBOX_CONFIG payload too short"}
 	}
-	return int(f.Payload[0]), nil
+	if f.Payload[0] != 1 {
+		return 0, &Error{Message: "FC blackbox support unavailable"}
+	}
+	if f.Payload[1] > BlackboxDeviceSerial {
+		return 0, &Error{Message: "unknown blackbox storage device"}
+	}
+	return int(f.Payload[1]), nil
 }
 
 // GetDataflashSummary queries and parses the dataflash summary.
@@ -212,19 +241,15 @@ func (c *Client) GetDataflashSummary() (*DataflashSummary, error) {
 
 // SendFlashReadRequest sends MSP_DATAFLASH_READ with the given parameters.
 // Uses MSP v2 framing for larger response payloads (~4 KB vs 255 B with v1).
-// If the FC is not Betaflight, compression is forced off.
+// Compression is deliberately unsupported; requests always use plain transfers.
 func (c *Client) SendFlashReadRequest(address uint32, size uint16, compression bool) error {
-	if c.FCVariant != BTFLVariant {
-		compression = false
-	}
-	var comprFlag byte
 	if compression {
-		comprFlag = 1
+		return &Error{Message: "flash compression is unsupported; set flash_read_compression=false"}
 	}
 	payload := make([]byte, 7)
 	binary.LittleEndian.PutUint32(payload[0:4], address)
 	binary.LittleEndian.PutUint16(payload[4:6], size)
-	payload[6] = comprFlag
+	payload[6] = DataflashCompressionNone
 	return c.SendV2(MSPDataflashRead, payload)
 }
 
@@ -250,24 +275,15 @@ func (c *Client) ReceiveFlashReadResponse() (address uint32, data []byte, err er
 		dataSize := int(binary.LittleEndian.Uint16(p[4:6]))
 		compressionType := p[6]
 		raw := p[7:]
-		if len(raw) < dataSize {
-			dataSize = len(raw)
+		if len(raw) != dataSize {
+			return address, nil, &Error{Message: "BTFL flash read length mismatch"}
 		}
 		raw = raw[:dataSize]
 
-		if compressionType == DataflashCompressionHuffman {
-			if len(raw) < 2 {
-				return address, nil, &Error{Message: "huffman data too short for char count"}
-			}
-			charCount := int(binary.LittleEndian.Uint16(raw[0:2]))
-			decoded, decErr := HuffmanDecode(raw[2:], charCount)
-			if decErr != nil {
-				return address, nil, &Error{Message: fmt.Sprintf("huffman decode: %v", decErr)}
-			}
-			data = decoded
-		} else {
-			data = raw
+		if compressionType != DataflashCompressionNone {
+			return address, nil, &Error{Message: "compressed flash responses are unsupported"}
 		}
+		data = raw
 	} else {
 		// iNav: addr(4) + raw data (no length/compression header)
 		data = p[4:]

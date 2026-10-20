@@ -1,13 +1,20 @@
 # LogFalcon v0.5 beta release plan
 
 **Created:** 27 July 2026  
-**Updated:** 2 October 2026  
+**Updated:** 20 October 2026
 **Target:** `v0.5.0-beta.1`  
 **Product scope:** Raspberry Pi Zero 2 W, Betaflight, SPI flash, prebuilt image.
 
 The findings and rationale behind this plan are recorded in `LOGFALCON_REVIEW_2026-07-27.md`.
 
-The repository remains pre-beta. The transfer core and cross-process status are not fixed. The website, guide, README and saved-log dashboard were simplified on 2 October and now describe those limitations explicitly.
+The local candidate now implements and automatically tests transfer safety,
+cross-process status, contained file access, settings recovery and release-input
+checks. Physical image/Wi-Fi/controller acceptance remains outstanding. See
+[PROJECT_STATUS.md](PROJECT_STATUS.md) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
+for the current gates. The phases below retain the earlier planning record;
+uncompleted estimates and proposed power work are not prerequisites added by
+this implementation pass. Do not use old checkbox state as evidence that a fix
+is absent or a physical check has passed.
 
 ## Release goal
 

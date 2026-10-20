@@ -7,7 +7,7 @@ Requires=sys-subsystem-net-devices-wlan0.device
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/sh -c 'rfkill unblock all; iw reg set US; sleep 1'
+ExecStart=/opt/logfalcon/wifi-init.sh
 
 [Install]
 WantedBy=multi-user.target

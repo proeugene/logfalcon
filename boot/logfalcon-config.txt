@@ -8,3 +8,8 @@ SSID=LogFalcon
 # Wi-Fi password (minimum 8 characters, WPA2)
 # Change this before first boot if you do not want to use the launch-default password.
 PASSWORD=fpvpilot
+
+# Optional: Wi-Fi regulatory country (set this for your location).
+COUNTRY_CODE=GB
+# Extra diagnostic metadata is enabled by default. Reboot after changing.
+DEBUG=true

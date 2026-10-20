@@ -14,8 +14,15 @@ echo ""
 # Clone pi-gen if not present
 if [[ ! -d "$SCRIPT_DIR/pi-gen-repo" ]]; then
     echo "Cloning pi-gen..."
-    git clone --depth 1 --branch bookworm https://github.com/RPi-Distro/pi-gen.git "$SCRIPT_DIR/pi-gen-repo"
+    git init "$SCRIPT_DIR/pi-gen-repo"
+    git -C "$SCRIPT_DIR/pi-gen-repo" remote add origin https://github.com/RPi-Distro/pi-gen.git
+    git -C "$SCRIPT_DIR/pi-gen-repo" fetch --depth 1 origin 1c2abf50924d5bfee3527657af74ddfb1da52904
+    git -C "$SCRIPT_DIR/pi-gen-repo" checkout --detach FETCH_HEAD
 fi
+
+[[ "$(git -C "$SCRIPT_DIR/pi-gen-repo" rev-parse HEAD)" == 1c2abf50924d5bfee3527657af74ddfb1da52904 ]] || {
+    echo "Existing pi-gen checkout has a different commit; use a fresh build directory." >&2; exit 1;
+}
 
 # Cross-compile for ARM before copying into pi-gen
 echo "Cross-compiling logfalcon for ARM..."

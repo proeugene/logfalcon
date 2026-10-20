@@ -1,0 +1,21 @@
+[Unit]
+Description=LogFalcon boot and shutdown diagnostics
+After=local-fs.target systemd-journal-flush.service logfalcon-config-apply.service
+Before=logfalcon-web.service
+RequiresMountsFor=/var/lib/logfalcon /boot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Export failure cannot prevent recording lifecycle or block appliance startup.
+ExecStart=-/opt/logfalcon/logfalcon --diagnostics start
+ExecStartPost=-/usr/bin/systemctl --no-block start logfalcon-diagnostics-export.service
+ExecStop=-/opt/logfalcon/logfalcon --diagnostics stop
+TimeoutStartSec=20
+TimeoutStopSec=20
+Nice=15
+IOSchedulingClass=idle
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

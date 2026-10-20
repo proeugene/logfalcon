@@ -2,6 +2,33 @@
 
 All notable changes to LogFalcon are documented here.
 
+## Unreleased - local evaluation candidate, 20 October 2026
+
+- Keep controller erasure and storage-pressure cleanup off by default; reject
+  invalid configuration. Existing upgrade settings, including old opt-ins, remain.
+- Correct flash-device/size handling, bound transfers, retain partial copies and
+  require a durable saved file/manifest before optional erase. iNav copying blocked.
+- Share truthful copy status across USB, dashboard and LED services. Bound and
+  redact diagnostic exports; debug defaults on and UK country/time/locale defaults
+  apply to fresh images. Change country before operating elsewhere.
+- Contain downloads/deletion/publication within storage, use standard byte ranges,
+  and keep SSE writes bounded. Count real user activity for optional idle shutdown.
+- Recover paired settings writes/restarts and interrupted changes; preserve
+  credentials/country/settings on upgrade. Reject incomplete existing configuration.
+- Remove optional compression and its GPL-origin table. Old configs must set
+  `flash_read_compression=false`. Historical distributions still need provenance review.
+- Require Go 1.27 (tested 1.27.3). Align CI/Docker/linter, add Linux integration and
+  bounded fuzzing, fail actionable vulnerability scans, verify installer checksums
+  and pin external build inputs. Release drafts include source/build identity.
+- Reconcile product/engineering docs. No real controller, image, timing or pilot
+  acceptance result is claimed for this candidate.
+
+## Historical release notes
+
+The entries below preserve earlier release descriptions. Their compatibility,
+performance and implementation claims are historical, not validation of this
+candidate. Use the current README and DEVELOPMENT_TESTING.md for current scope.
+
 ## [v0.4.6] — 2026-03
 
 ### Added — `http://log.falcon` shortcut URL + community launch polish

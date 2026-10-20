@@ -28,7 +28,7 @@
           <a href="guide.html#setup" class="btn-primary">Get started</a>
           <a href="https://github.com/proeugene/logfalcon" class="btn-ghost">View the code</a>
         </div>
-        <p class="release-note"><strong>Experimental.</strong> Transfer reliability fixes are still needed. Automatic erasure is not recommended for evaluation; live transfer status is unavailable in the current dashboard.</p>
+        <p class="release-note"><strong>Experimental.</strong> Source-level fixes have automated tests; physical acceptance is outstanding. Keep automatic erasure disabled during evaluation. Older release images may lack these changes.</p>
       </div>
     </section>
     <section id="procedure" class="section">
@@ -44,8 +44,8 @@
     <section class="section" id="compatibility">
       <h2 class="section-label">Compatibility</h2>
       <div class="compatibility-copy">
-        <p><strong>Betaflight with internal SPI flash</strong> is the primary development target. Large-transfer and storage-device parsing defects remain unresolved.</p>
-        <p>iNav support needs protocol corrections and hardware validation. FC-side SD card logs and ArduPilot are not supported.</p>
+        <p><strong>Betaflight with internal SPI flash</strong> is the primary development target. Transfer and parsing fixes have automated regression tests; real-controller validation is still required.</p>
+        <p>iNav copying is disabled pending protocol corrections and hardware validation. FC-side SD card logs and ArduPilot are not supported.</p>
         <p>Pi Zero W and Zero 2 W builds exist. Physical compatibility and timings still need recorded testing; no transfer-time guarantee is made.</p>
       </div>
       <a class="text-link" href="guide.html#compatibility">Read the limitations →</a>
@@ -61,6 +61,7 @@
   </main>
   <footer>
     <span>LOGFALCON</span><span class="footer-sep">·</span>
+    <a href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md">Engineering</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon">GitHub</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon/issues">Feedback</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon/blob/main/LICENSE">MIT licence</a>

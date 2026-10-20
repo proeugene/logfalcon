@@ -1,3 +1,11 @@
+> **20 October 2026 update:** This review records historical findings. The local
+> candidate now addresses the transfer, status, containment, configuration and
+> release-input defects with automated checks. iNav is blocked and compression
+> removed. Exact-image physical acceptance, licence-holder confirmation and pilot
+> feedback remain open. See [current status](PROJECT_STATUS.md) and
+> [actual verification](DEVELOPMENT_TESTING.md); historical findings below are not
+> current defect status or proof of field reliability.
+
 # LogFalcon product and technical review
 
 **Original review:** 27 July 2026  

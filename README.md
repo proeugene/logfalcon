@@ -11,17 +11,17 @@ LogFalcon is an open-source Go appliance for copying flight-controller blackbox 
 
 ## Current status and compatibility
 
-**Experimental. The current transfer workflow needs reliability fixes before field use with automatic erasure.**
+**Experimental. Reliability fixes have automated regression tests; physical image, Wi-Fi and controller acceptance remain outstanding. Older release images may lack these changes.**
 
-- **Betaflight / SPI flash:** intended primary workflow; large-transfer and storage-device parsing defects remain unresolved.
-- **iNav:** protocol support exists in the code, but flash-summary parsing needs correction. Compatibility is not confirmed.
+- **Betaflight / SPI flash:** primary workflow; transfer sizes and storage-device parsing have regression tests, with hardware validation still required.
+- **iNav:** automatic copying is disabled pending validation of its dataflash protocol.
 - **FC-side SD cards and ArduPilot:** not supported.
 - **Pi Zero W / Zero 2 W:** build targets exist; this checkout does not establish physical compatibility, boot time or transfer speed.
-- **Dashboard:** lists saved sessions; live progress and safe-to-unplug confirmation are unavailable with the current separate services.
+- **Dashboard:** reads boot-scoped shared transfer status and lists completed saved sessions.
 
 The code hashes received bytes and compares them with a reread of the saved file. This checks saved-copy consistency, not an independent checksum supplied by the controller or the validity of the blackbox log.
 
-Current defaults enable **automatic controller erasure** and **deletion of old Pi sessions when storage is low**. For evaluation, set both `erase_after_sync = false` and `storage_pressure_cleanup = false` in `/etc/logfalcon/logfalcon.toml`. Check that the file is valid: malformed configuration currently falls back to defaults. Use `--dry-run` for manual transfer testing to skip controller erasure.
+**Automatic controller erasure and storage cleanup default to off.** Keep `erase_after_sync = false` and `storage_pressure_cleanup = false` during evaluation. Invalid configuration prevents copying. Upgrades retain existing configuration, including previously enabled destructive settings. Use `--dry-run` for manual testing to skip erasure.
 
 ## What you need
 
@@ -33,18 +33,20 @@ Current defaults enable **automatic controller erasure** and **deletion of old P
 
 ## Getting started for evaluation
 
-1. Review the limitations above, then download a Raspberry Pi image from [Releases](https://github.com/proeugene/logfalcon/releases). Check the assets and any supplied checksums for that release.
-2. Flash it with Raspberry Pi Imager or Etcher. Optionally change the hotspot settings in `logfalcon-config.txt` on the boot partition.
+1. Review the limitations above, then download a Raspberry Pi image from [Releases](https://github.com/proeugene/logfalcon/releases). Choose a candidate whose release notes identify these safety fixes; verify its image against `checksums.txt`. Do not assume an older image matches this checkout.
+2. Flash it with Raspberry Pi Imager or Etcher. Set your country and optionally change the hotspot settings in `logfalcon-config.txt` on the boot partition.
 3. Power the Pi through **PWR IN**. Before connecting a controller, disable automatic erasure and storage cleanup in the configuration. See the [setup guide](https://proeugene.github.io/logfalcon/guide.html#setup).
 4. Connect to the `LogFalcon` Wi-Fi hotspot and open **http://log.falcon** or **http://192.168.4.1**. The default Wi-Fi password is `fpvpilot`; change it before shared use.
-5. Connect the controller through the Pi's **USB / OTG data port**. Keep it connected until completion has been confirmed in the service log. The current dashboard and LED do not reliably confirm the outcome.
+5. Connect the controller through the Pi's **USB / OTG data port**. Keep it connected until the dashboard records completion. Confirm dashboard, service log and LED behaviour during hardware acceptance.
 6. Refresh the dashboard, download the `.bbl`, and check that it opens in Blackbox Explorer. Keep the original controller data during evaluation.
 
-## Usage and development
+## Engineering and development
 
-The [guide](https://proeugene.github.io/logfalcon/guide.html) covers downloads, configuration, LED limitations, troubleshooting, SSH administration, CLI usage and local dashboard testing.
+[Architecture and recovery](docs/ARCHITECTURE.md) · [AI-assisted development](docs/AI_ASSISTED_DEVELOPMENT.md) · [Compatibility evidence](docs/FC_COMPATIBILITY_ANALYSIS.md)
 
-Requires **Go 1.23+**. The application is a single Go binary; the Pi image also supplies Linux services and hotspot utilities.
+The [guide](https://proeugene.github.io/logfalcon/guide.html) covers downloads, configuration, LED behaviour, troubleshooting, SSH administration, CLI usage and local dashboard testing.
+
+Requires **Go 1.27**, tested with **1.27.3**. The application is a single Go binary; the Pi image also supplies Linux services and hotspot utilities.
 
 ```sh
 make build       # Native binary
@@ -54,8 +56,10 @@ make build-pi    # Linux ARM6
 make build-pi2   # Linux ARM64
 ```
 
+See [development diagnostics and physical testing](DEVELOPMENT_TESTING.md) for the default debug logging (`DEBUG=true`, UK country `GB`) and collecting `LOGFALCON-DIAGNOSTICS/latest.json` from the SD card on a Mac.
+
 Tests run without connected hardware. Passing tests and cross-compilation do not establish field reliability. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution instructions and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for image/release checks.
 
 Report problems through [GitHub Issues](https://github.com/proeugene/logfalcon/issues), including the Pi model, FC board, firmware version and service log. See [CHANGELOG.md](CHANGELOG.md) for version history.
 
-Licensed under the [MIT licence](LICENSE).
+Declared [MIT licence](LICENSE); see the [provenance review](docs/PROVENANCE.md) before redistribution.

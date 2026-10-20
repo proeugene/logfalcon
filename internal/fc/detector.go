@@ -90,6 +90,11 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	if !msp.SupportedVariants[variant] {
 		return nil, &NotSupportedError{Variant: variant}
 	}
+	// Its current DATAFLASH_SUMMARY wire layout has not been validated here.
+	// Do not guess storage state, particularly when automatic erase is enabled.
+	if variant == msp.INAVVariant {
+		return nil, &DetectionError{Message: "iNav automatic copying is disabled pending dataflash protocol validation"}
+	}
 
 	// 3. Firmware version string (best effort — some older FC builds don't support this)
 	firmwareVersion := ""
@@ -122,11 +127,11 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	}
 
 	// 6. Blackbox config
-	bbDevice := msp.BlackboxDeviceNone
+	var bbDevice int
 	if variant == msp.BTFLVariant {
 		deviceType, err := client.GetBlackboxConfig()
 		if err != nil {
-			slog.Warn("could not read BLACKBOX_CONFIG", "error", err)
+			return nil, &DetectionError{Message: "Cannot establish the configured blackbox storage device"}
 		} else {
 			bbDevice = deviceType
 			slog.Info("blackbox device type", "device", bbDevice)
@@ -141,6 +146,9 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	// 7. SD card → error
 	if bbDevice == msp.BlackboxDeviceSDCard {
 		return nil, &SDCardError{}
+	}
+	if bbDevice != msp.BlackboxDeviceFlash {
+		return nil, &DetectionError{Message: "Blackbox must be configured to use internal flash"}
 	}
 
 	return &FCInfo{

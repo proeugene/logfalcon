@@ -1,11 +1,15 @@
 package storage
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/proeugene/logfalcon/internal/util"
@@ -64,48 +68,39 @@ type Session struct {
 // atomicJSONWrite writes data as indented JSON to a temporary file,
 // fsyncs it to durable storage, then atomically renames over the target
 // path so that a power loss never leaves a partially-written manifest.
-func atomicJSONWrite(path string, data any) error {
+func atomicJSONWrite(root *os.Root, name string, data any) error {
 	b, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal json: %w", err)
+		return err
 	}
-
-	tmpPath := path + ".tmp"
-	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	token := make([]byte, 12)
+	if _, err = rand.Read(token); err != nil {
+		return err
+	}
+	tmp := ".manifest-" + hex.EncodeToString(token)
+	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 	if err != nil {
-		return fmt.Errorf("open temp file: %w", err)
+		return err
 	}
-
-	if _, err := f.Write(b); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("write temp file: %w", err)
+	defer func() { _ = root.Remove(tmp); _ = f.Close() }()
+	if _, err = f.Write(b); err != nil {
+		return err
 	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("fsync temp file: %w", err)
+	if err = f.Sync(); err != nil {
+		return err
 	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("close temp file: %w", err)
+	if err = f.Close(); err != nil {
+		return err
 	}
-
-	if err := os.Rename(tmpPath, path); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("rename temp file: %w", err)
+	if err = root.Rename(tmp, name); err != nil {
+		return err
 	}
-
-	// Fsync the parent directory so the rename is durable on the filesystem.
-	// On SD cards a power loss after rename can lose the directory entry.
-	// This is a best-effort operation — on macOS directory fsync is a no-op,
-	// and when the parent directory can't be opened we ignore the error.
-	dir := filepath.Dir(path)
-	if d, err := os.Open(dir); err == nil {
-		_ = d.Sync()
-		_ = d.Close()
+	d, err := root.Open(".")
+	if err != nil {
+		return err
 	}
-	return nil
+	defer func() { _ = d.Close() }()
+	return d.Sync()
 }
 
 // MakeSessionDir creates a timestamped session directory.
@@ -119,17 +114,52 @@ func MakeSessionDir(root string, info *FCInfo) (string, error) {
 			uidShort = info.UID
 		}
 	}
-	fcDir := filepath.Join(root, fmt.Sprintf("fc_%s_uid-%s", info.Variant, uidShort))
-	timestamp := time.Now().Format("2006-01-02_150405")
-	sessionDir := filepath.Join(fcDir, timestamp)
-	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
-		return "", fmt.Errorf("create session dir: %w", err)
+	name := fmt.Sprintf("fc_%s_uid-%s", info.Variant, uidShort)
+	if filepath.Base(name) != name || strings.ContainsAny(name, `/\:`) {
+		return "", fmt.Errorf("invalid controller directory")
 	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = r.Close() }()
+	if err = r.Mkdir(name, 0755); err != nil && !os.IsExist(err) {
+		return "", err
+	}
+	st, err := r.Lstat(name)
+	if err != nil || !st.IsDir() {
+		return "", fmt.Errorf("controller directory must be real")
+	}
+	fcRoot, err := r.OpenRoot(name)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = fcRoot.Close() }()
+	token := make([]byte, 12)
+	if _, err = rand.Read(token); err != nil {
+		return "", err
+	}
+	sessionName := time.Now().UTC().Format("2006-01-02_150405") + "-" + hex.EncodeToString(token)
+	if err = fcRoot.Mkdir(sessionName, 0755); err != nil {
+		return "", err
+	}
+	for _, handle := range []*os.Root{fcRoot, r} {
+		d, err := handle.Open(".")
+		if err != nil {
+			return "", err
+		}
+		err = d.Sync()
+		_ = d.Close()
+		if err != nil {
+			return "", err
+		}
+	}
+	sessionDir := filepath.Join(root, name, sessionName)
 	return sessionDir, nil
 }
 
 // WriteManifest writes manifest.json to the session directory.
-func WriteManifest(dir string, info *FCInfo, sha256hex string, usedSize int64,
+func WriteManifest(storagePath, dir string, info *FCInfo, sha256hex string, usedSize int64,
 	eraseCompleted, eraseAttempted bool, timing map[string]float64) error {
 
 	m := Manifest{
@@ -150,13 +180,22 @@ func WriteManifest(dir string, info *FCInfo, sha256hex string, usedSize int64,
 		EraseCompleted: eraseCompleted,
 		Timing:         timing,
 	}
-	return atomicJSONWrite(filepath.Join(dir, ManifestFilename), m)
+	session, err := openSessionPath(storagePath, dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = session.Close() }()
+	return atomicJSONWrite(session, ManifestFilename, m)
 }
 
 // UpdateManifestErase updates erase fields in an existing manifest.
-func UpdateManifestErase(dir string, eraseCompleted bool, timing map[string]float64) error {
-	path := filepath.Join(dir, ManifestFilename)
-	data, err := os.ReadFile(path)
+func UpdateManifestErase(storagePath, dir string, eraseCompleted bool, timing map[string]float64) error {
+	session, err := openSessionPath(storagePath, dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = session.Close() }()
+	data, err := session.ReadFile(ManifestFilename)
 	if err != nil {
 		return fmt.Errorf("read manifest: %w", err)
 	}
@@ -169,7 +208,7 @@ func UpdateManifestErase(dir string, eraseCompleted bool, timing map[string]floa
 	if timing != nil {
 		m.Timing = timing
 	}
-	return atomicJSONWrite(path, m)
+	return atomicJSONWrite(session, ManifestFilename, m)
 }
 
 // ListSessions returns all sessions under root, newest first.
@@ -199,8 +238,12 @@ func ListSessions(root string) ([]*Session, error) {
 			}
 			sessDirName := sessEntry.Name()
 			sessDirPath := filepath.Join(fcDirPath, sessDirName)
-			manifestPath := filepath.Join(sessDirPath, ManifestFilename)
-			data, err := os.ReadFile(manifestPath)
+			manifest, err := OpenSessionFile(root, fmt.Sprintf("%s/%s", fcDirName, sessDirName), ManifestFilename)
+			if err != nil {
+				continue
+			}
+			data, err := io.ReadAll(io.LimitReader(manifest, 1024*1024))
+			_ = manifest.Close()
 			if err != nil {
 				continue
 			}
@@ -210,8 +253,11 @@ func ListSessions(root string) ([]*Session, error) {
 			}
 			bblPath := filepath.Join(sessDirPath, RawFlashFilename)
 			var bblPtr *string
-			if _, err := os.Stat(bblPath); err == nil {
-				bblPtr = &bblPath
+			if f, err := OpenSessionFile(root, fmt.Sprintf("%s/%s", fcDirName, sessDirName), RawFlashFilename); err == nil {
+				if st, err := f.Stat(); err == nil && st.Size() == m.File.Bytes {
+					bblPtr = &bblPath
+				}
+				_ = f.Close()
 			}
 			sessions = append(sessions, &Session{
 				SessionID:  fmt.Sprintf("%s/%s", fcDirName, sessDirName),
@@ -286,15 +332,10 @@ func CleanupOldestSessions(root string, requiredFreeBytes int64) ([]string, erro
 		if free >= requiredFreeBytes {
 			break
 		}
-		if err := os.RemoveAll(c.sessionDir); err != nil {
+		if err := DeleteSession(root, c.sessionID); err != nil {
 			return deleted, fmt.Errorf("remove session %s: %w", c.sessionID, err)
 		}
-		// Remove empty FC directory.
-		parent := filepath.Dir(c.sessionDir)
-		remaining, _ := os.ReadDir(parent)
-		if len(remaining) == 0 {
-			_ = os.Remove(parent)
-		}
+		// Leave the harmless empty parent; deletion never needs an unrooted path.
 		deleted = append(deleted, c.sessionID)
 	}
 	return deleted, nil

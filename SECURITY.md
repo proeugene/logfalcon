@@ -1,19 +1,30 @@
-# Security Policy
+# Security
 
-## Supported versions
+LogFalcon is experimental. Fixes target the current candidate/main branch; no
+older release has a security-maintenance guarantee or current physical sign-off.
+Older binaries/images can lack important safety and containment fixes. Check
+[the candidate record](PROJECT_STATUS.md) and [changelog](CHANGELOG.md).
 
-| Version | Supported |
-|---------|-----------|
-| v0.4.x (latest) | ✅ |
-| v0.3.x | Bug fixes only |
-| Older | Not supported |
+For a sensitive report, email **eprokudin@icloud.com**, the maintainer address
+recorded in the repository's current commits. Include affected version/commit,
+impact and a minimal reproduction without live credentials or personal logs.
+Do not post exploit details or secrets in a public issue. Private vulnerability
+reporting was **disabled** when inspected on 20 October 2026; the repository does
+not yet offer that route. No response deadline is guaranteed by this small
+maintainer-run project.
 
-## Reporting a vulnerability
+The hotspot dashboard uses HTTP without login/TLS. Every connected client is
+trusted to access/delete saved logs and change Wi-Fi settings. CSRF protection
+is not authentication. Change both the default hotspot password and the image's
+initial administration password before shared use. Do not expose the dashboard
+outside a trusted local network. Local administrators/SD-card writers remain
+trusted. See [architecture and privileges](docs/ARCHITECTURE.md).
 
-LogFalcon runs on a local Wi-Fi network with no internet exposure by default. If you find a security issue (e.g. unauthenticated access to the web UI, privilege escalation on the Pi, or a supply-chain issue in the build), please report it privately.
+Debug defaults on, but records command metadata rather than raw MSP payloads or
+passwords. Exports are bounded and redacted; review them for IDs, IP/MAC addresses
+and activity times before sharing. Redaction is not a guarantee of anonymity.
 
-**Do not open a public GitHub issue for security vulnerabilities.**
-
-Report via [GitHub private security advisory](https://github.com/proeugene/logfalcon/security/advisories/new) or email the maintainer directly (address in the commit history).
-
-I aim to acknowledge reports within 72 hours and release a fix within 14 days for issues with real-world impact.
+Release checksums verify download integrity relative to the GitHub-hosted checksum
+file; they are not signatures or independent publisher authentication. The remote
+installer rejects missing/mismatched assets before installation. Prefer a pinned
+candidate and inspect its source/provenance before running installer scripts.

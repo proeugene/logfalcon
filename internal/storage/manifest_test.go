@@ -70,7 +70,7 @@ func TestWriteManifest(t *testing.T) {
 	}
 
 	timing := map[string]float64{"download_s": 12.5, "erase_s": 3.2}
-	err = WriteManifest(dir, info, "deadbeef01234567", 1024*1024, false, false, timing)
+	err = WriteManifest(root, dir, info, "deadbeef01234567", 1024*1024, false, false, timing)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}
@@ -130,14 +130,14 @@ func TestUpdateManifestErase(t *testing.T) {
 	}
 
 	// Write initial manifest.
-	err = WriteManifest(dir, info, "aabbccdd", 512, false, false, nil)
+	err = WriteManifest(root, dir, info, "aabbccdd", 512, false, false, nil)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}
 
 	// Update erase fields.
 	timing := map[string]float64{"erase_s": 5.1}
-	err = UpdateManifestErase(dir, true, timing)
+	err = UpdateManifestErase(root, dir, true, timing)
 	if err != nil {
 		t.Fatalf("UpdateManifestErase: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestListSessions(t *testing.T) {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		err := WriteManifest(d, info, "hash"+string(rune('0'+i)), int64(i*100), false, false, nil)
+		err := WriteManifest(root, d, info, "hash"+string(rune('0'+i)), int64(i*100), false, false, nil)
 		if err != nil {
 			t.Fatalf("WriteManifest: %v", err)
 		}
@@ -232,7 +232,7 @@ func TestCleanupNotNeeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MakeSessionDir: %v", err)
 	}
-	err = WriteManifest(dir, info, "abcd", 256, false, false, nil)
+	err = WriteManifest(root, dir, info, "abcd", 256, false, false, nil)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}
@@ -265,7 +265,7 @@ func TestAtomicWriteNoTempFileLeak(t *testing.T) {
 		t.Fatalf("MakeSessionDir: %v", err)
 	}
 
-	err = WriteManifest(dir, info, "feedc0ffee", 512, false, false, nil)
+	err = WriteManifest(root, dir, info, "feedc0ffee", 512, false, false, nil)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}

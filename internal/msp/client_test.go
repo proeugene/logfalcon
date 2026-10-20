@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"log/slog"
 	"testing"
 	"time"
 )
@@ -24,7 +25,7 @@ func (m *mockSerial) Read(buf []byte) (int, error) {
 	return n, err
 }
 func (m *mockSerial) Write(data []byte) (int, error) { return m.writeBuf.Write(data) }
-func (m *mockSerial) Close() error                    { return nil }
+func (m *mockSerial) Close() error                   { return nil }
 
 // makeV1Response builds an MSP v1 response frame ($M>).
 func makeV1Response(code byte, payload []byte) []byte {
@@ -176,5 +177,69 @@ func TestTimeout(t *testing.T) {
 	}
 	if _, ok := err.(*TimeoutError); !ok {
 		t.Fatalf("expected *TimeoutError, got %T: %v", err, err)
+	}
+}
+
+func TestBlackboxConfigWireLayout(t *testing.T) {
+	for _, tc := range []struct {
+		payload []byte
+		want    int
+		fail    bool
+	}{
+		{[]byte{1, 1, 1, 1, 0, 0, 0}, BlackboxDeviceFlash, false},
+		{[]byte{1, 2, 1, 1, 0, 0, 0}, BlackboxDeviceSDCard, false},
+		{[]byte{1, 0}, BlackboxDeviceNone, false},
+		{[]byte{0, 0}, 0, true}, {[]byte{1}, 0, true}, {nil, 0, true}, {[]byte{1, 255}, 0, true},
+	} {
+		c, _ := newTestClient(makeV1Response(MSPBlackboxConfig, tc.payload))
+		got, err := c.GetBlackboxConfig()
+		if (err != nil) != tc.fail || (!tc.fail && got != tc.want) {
+			t.Fatalf("payload=%v got=%d err=%v", tc.payload, got, err)
+		}
+	}
+}
+
+func TestDataflashFlags(t *testing.T) {
+	for _, flags := range []byte{0, 1, 2, 3} {
+		payload := make([]byte, 13)
+		payload[0] = flags
+		c, _ := newTestClient(makeV1Response(MSPDataflashSummary, payload))
+		s, err := c.GetDataflashSummary()
+		if err != nil || s.Ready != (flags&1 != 0) || s.Supported != (flags&2 != 0) {
+			t.Fatalf("flags=%d summary=%+v err=%v", flags, s, err)
+		}
+	}
+}
+
+func TestRejectedCommand(t *testing.T) {
+	frame := makeV1Response(MSPAPIVersion, nil)
+	frame[2] = '!'
+	c, _ := newTestClient(frame)
+	if _, _, err := c.GetAPIVersion(); err == nil {
+		t.Fatal("FC rejection accepted")
+	}
+}
+
+func TestMalformedFlashResponse(t *testing.T) {
+	for _, payload := range [][]byte{{0, 0, 0}, {0, 0, 0, 0, 2, 0, 0, 1}, {0, 0, 0, 0, 0, 0, 99}} {
+		c, _ := newTestClient(makeV1Response(MSPDataflashRead, payload))
+		c.FCVariant = BTFLVariant
+		if _, _, err := c.ReceiveFlashReadResponse(); err == nil {
+			t.Fatalf("accepted malformed response %v", payload)
+		}
+	}
+}
+
+func TestDebugDoesNotLogPayload(t *testing.T) {
+	var out bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	c, _ := newTestClient(nil)
+	if err := c.SendV2(MSPDataflashRead, []byte("secret-payload-sentinel")); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(out.Bytes(), []byte("secret-payload-sentinel")) || !bytes.Contains(out.Bytes(), []byte("MSP request")) {
+		t.Fatal("protocol debug did not restrict itself to metadata")
 	}
 }

@@ -7,14 +7,12 @@ Description=LogFalcon (%I)
 Documentation=https://github.com/proeugene/logfalcon
 # Stop if the device disappears mid-sync
 BindsTo=dev-%i.device
-After=dev-%i.device network.target
-# Only one sync at a time
-Conflicts=logfalcon@*.service
+After=dev-%i.device local-fs.target logfalcon-diagnostics.service
+Requires=logfalcon-runtime.service logfalcon-config-apply.service
+After=logfalcon-runtime.service logfalcon-config-apply.service
 
 [Service]
 Type=oneshot
-# Pause ready LED during sync — it will be restored when this service exits
-ExecStartPre=+/usr/bin/systemctl stop logfalcon-ready-led.service
 # Wait for USB enumeration to stabilise
 ExecStartPre=/bin/sleep 3
 
@@ -34,7 +32,7 @@ SyslogIdentifier=logfalcon
 # MemoryMax=350M: hard ceiling — OOM-kill the unit if exceeded
 MemoryHigh=300M
 MemoryMax=350M
-TimeoutStartSec=600
+TimeoutStartSec=630
 TimeoutStopSec=10
 
 # Hardening
@@ -46,10 +44,10 @@ LockPersonality=true
 SystemCallArchitectures=native
 
 # Filesystem access — log storage, config, and LED sysfs
-ReadWritePaths=/mnt/logfalcon-logs /etc/logfalcon /sys/class/leds
+ReadWritePaths=/mnt/logfalcon-logs /run/logfalcon
 
-# Restore ready LED after sync completes (success or failure)
-ExecStopPost=+/usr/bin/systemctl start logfalcon-ready-led.service
+# Export asynchronously, including failures. Never delay the copy process.
+ExecStopPost=-+/usr/bin/systemctl --no-block start logfalcon-diagnostics-export.service
 
 # Do not restart on failure — the pilot will re-plug the FC
 Restart=no

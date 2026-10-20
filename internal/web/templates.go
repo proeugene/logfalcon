@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/proeugene/logfalcon/internal/storage"
+	lfSync "github.com/proeugene/logfalcon/internal/sync"
 )
 
 // IndexParams holds values for the main dashboard page.
@@ -17,6 +18,7 @@ type IndexParams struct {
 	SessionsHTML       string
 	StorageWarningHTML string
 	CSRFToken          string
+	Status             lfSync.Status
 }
 
 // SettingsParams holds values for the settings page.
@@ -30,8 +32,7 @@ type SettingsParams struct {
 
 func esc(s string) string { return html.EscapeString(s) }
 
-// RenderIndex renders the saved-log browser. Live status is intentionally not
-// displayed until the separate sync and web processes share a status source.
+// RenderIndex renders saved logs and the shared, boot-scoped transfer result.
 func RenderIndex(params IndexParams) string {
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
@@ -90,8 +91,8 @@ func RenderIndex(params IndexParams) string {
 <main>
   <section class="status-card" aria-labelledby="transfer-title">
     <h2 id="transfer-title">Transfer status</h2>
-    <p><strong>Live transfer status is unavailable in this version.</strong></p>
-    <p>This page lists saved sessions. It cannot confirm that copying or erasing has finished. Keep the FC connected until the result is confirmed in the service log.</p>
+    <p id="transfer-status" role="status" aria-live="polite">%s</p>
+    <p>Keep the controller connected while a transfer is active. Completed copies appear below after refreshing.</p>
   </section>
   %s
   <section aria-labelledby="logs-title">
@@ -115,6 +116,17 @@ func RenderIndex(params IndexParams) string {
   </details>
 </main>
 <script>
+  async function updateStatus() {
+    try {
+      const r = await fetch('/status', {cache: 'no-store'});
+      if (!r.ok) throw new Error('Status unavailable');
+      const s = await r.json();
+      document.getElementById('transfer-status').textContent = s.state + ': ' + s.message + (s.state === 'syncing' ? ' (' + s.progress + '%%)' : '');
+    } catch (_) {
+      document.getElementById('transfer-status').textContent = 'Status unavailable. Completion is not confirmed; check the service log.';
+    }
+  }
+  setInterval(updateStatus, 2000);
   function deleteSession(sessionId, btn) {
     if (!confirm('Delete this saved session from the Pi?\n\nDownload the .bbl first. The FC is not changed.')) return;
     btn.disabled = true;
@@ -135,7 +147,7 @@ func RenderIndex(params IndexParams) string {
   }
 </script>
 </body>
-</html>`, params.StorageWarningHTML, params.SessionsHTML,
+</html>`, esc(params.Status.State+": "+params.Status.Message), params.StorageWarningHTML, params.SessionsHTML,
 		fmt.Sprintf("%.1f", params.FreeGB), fmt.Sprintf("%.1f", params.UsedGB), params.Pct, esc(params.CSRFToken))
 }
 
@@ -218,7 +230,11 @@ func RenderSessions(sessions []*storage.Session) string {
 			bblHTML = `<p>Log file unavailable.</p>`
 		}
 		title := strings.ReplaceAll(sess.SessionDir, "_", " ")
-		if stamp, err := time.Parse("2006-01-02_150405", sess.SessionDir); err == nil {
+		stampText := sess.SessionDir
+		if len(stampText) >= len("2006-01-02_150405") {
+			stampText = stampText[:len("2006-01-02_150405")]
+		}
+		if stamp, err := time.Parse("2006-01-02_150405", stampText); err == nil {
 			title = stamp.Format("2 Jan 2006 · 15:04:05")
 		}
 

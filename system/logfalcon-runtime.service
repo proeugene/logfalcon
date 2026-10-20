@@ -1,0 +1,17 @@
+[Unit]
+Description=LogFalcon shared runtime directory
+After=local-fs.target
+Before=logfalcon-web.service logfalcon-ready-led.service
+
+[Service]
+Type=oneshot
+User=bbsyncer
+Group=bbsyncer
+RuntimeDirectory=logfalcon
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ExecStart=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

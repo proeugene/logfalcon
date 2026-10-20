@@ -27,13 +27,13 @@
     <main class="guide-content">
       <section id="setup" class="doc-section">
         <h2 class="section-label">Setup for evaluation</h2>
-        <div class="info-box"><p><strong>Experimental:</strong> the current transfer path has known defects. Keep the controller's original data, disable automatic erasure and cleanup, and read the <a href="#compatibility">limitations</a> before connecting it.</p></div>
+        <div class="info-box"><p><strong>Experimental:</strong> the source checkout has automated transfer regression tests; physical acceptance is outstanding and older release images may lack the changes. Keep the controller's original data, disable automatic erasure and cleanup, and read the <a href="#compatibility">limitations</a> before connecting it.</p></div>
         <h3>Hardware</h3>
         <p>You need a Pi Zero W or Zero 2 W, a 16 GB+ microSD card, a suitable 5 V USB supply, an OTG adapter and a controller data cable. The primary development target is Betaflight logging to internal SPI flash.</p>
         <h3>Flash and boot</h3>
         <ol class="numbered-list">
-          <li><span>Download a Raspberry Pi image from <a href="https://github.com/proeugene/logfalcon/releases">Releases</a>. Check that the selected release includes an image, and verify it against any supplied checksums.</span></li>
-          <li><span>Flash it using Raspberry Pi Imager or Etcher. On the boot partition, optionally edit <code>logfalcon-config.txt</code> to set <code>SSID</code> and <code>PASSWORD</code>.</span></li>
+          <li><span>Download a Raspberry Pi image from <a href="https://github.com/proeugene/logfalcon/releases">Releases</a>. Choose a candidate whose notes include the current safety fixes and verify its image against checksums.txt. Older releases may lack these fixes.</span></li>
+          <li><span>Flash it using Raspberry Pi Imager or Etcher. On the boot partition, optionally edit <code>logfalcon-config.txt</code> to set <code>SSID</code>, <code>PASSWORD</code> and <code>COUNTRY_CODE</code> (for example, <code>GB</code> in the UK).</span></li>
           <li><span>Insert the card and power the Pi through <strong>PWR IN</strong>. Wait for the hotspot; boot timing has not been established for this image.</span></li>
           <li><span>Join <strong>LogFalcon</strong> Wi-Fi (default password <code>fpvpilot</code>), then open <a href="http://log.falcon">http://log.falcon</a> or <a href="http://192.168.4.1">http://192.168.4.1</a>.</span></li>
         </ol>
@@ -41,7 +41,7 @@
         <p>Use SSH to edit <code>/etc/logfalcon/logfalcon.toml</code>. Set these values in the existing file:</p>
         <pre><code>erase_after_sync = false
 storage_pressure_cleanup = false</code></pre>
-        <p>Check the TOML carefully: invalid configuration can currently fall back to defaults, which enable both behaviours. For manual evaluation, <code>--dry-run</code> also skips erasure. These instructions do not repair the known transfer defects.</p>
+        <p>New installations default both behaviours to off. Upgrades preserve existing configuration, including previously enabled destructive settings. Invalid configuration stops copying. For manual evaluation, <code>--dry-run</code> also skips erasure.</p>
         <p>The supplied image uses SSH user <code>pi</code> and default password <code>logfalcon</code>. Change it with <code>passwd</code>. SSH and hotspot passwords are separate.</p>
       </section>
       <section id="first-sync" class="doc-section">
@@ -49,7 +49,7 @@ storage_pressure_cleanup = false</code></pre>
         <ol class="numbered-list">
           <li><span>Confirm that the FC's Blackbox Device is <strong>SPI Flash</strong> and that automatic erasure and storage cleanup are disabled.</span></li>
           <li><span>Connect the controller through the Pi's <strong>USB / OTG data port</strong>. The installed USB rule starts the transfer service automatically.</span></li>
-          <li><span>Keep the controller connected while copying. Check the service log for the outcome; the current dashboard and LED cannot reliably confirm completion.</span></li>
+          <li><span>Keep the controller connected while copying. The dashboard reads shared progress and results; confirm its outcome against the service log during physical testing.</span></li>
           <li><span>Refresh the dashboard, download the saved <code>.bbl</code>, and open it in Blackbox Explorer. Preserve the original controller data during evaluation.</span></li>
         </ol>
         <pre><code># Follow transfer results over SSH
@@ -67,29 +67,29 @@ journalctl -u 'logfalcon@*' -f</code></pre>
         <ul class="guide-list">
           <li><strong>Betaflight / SPI flash:</strong> the main development target. The code rejects MSP API versions older than 1.41. That version check is not a hardware compatibility guarantee.</li>
           <li><strong>Transfer defects:</strong> large sizes can produce zero-length read requests. Blackbox configuration currently parses the support byte as the storage-device type.</li>
-          <li><strong>iNav:</strong> flash-summary parsing needs correction. Treat support as unconfirmed.</li>
+          <li><strong>iNav:</strong> automatic copying is disabled until the dataflash protocol is validated.</li>
           <li><strong>Unsupported:</strong> controller-side SD card logs and ArduPilot.</li>
-          <li><strong>Dashboard:</strong> web and sync services run separately without shared live status. Progress, errors and safe-to-unplug state cannot currently be reported here.</li>
+          <li><strong>Dashboard:</strong> web and sync services share an atomic runtime status file. Interrupted or unreadable status does not confirm completion.</li>
           <li><strong>Hardware evidence:</strong> Pi builds exist, but physical compatibility, power-loss behaviour and boot/transfer times require recorded tests.</li>
         </ul>
         <p>Report findings through <a href="https://github.com/proeugene/logfalcon/issues">GitHub Issues</a>. LogFalcon is independent of the Betaflight and iNav projects.</p>
       </section>
       <section id="configuration" class="doc-section">
         <h2 class="section-label">Configuration</h2>
-        <p>The installed file is <code>/etc/logfalcon/logfalcon.toml</code>. A supplied <code>--config</code> path is searched first, followed by the system file, local <code>config/logfalcon.toml</code> and defaults. Invalid files can currently be skipped.</p>
-        <pre><code># Recommended values for evaluation; current defaults differ
+        <p>The installed file is <code>/etc/logfalcon/logfalcon.toml</code>. An explicit <code>--config</code> path must exist and be valid. Otherwise the system file, local <code>config/logfalcon.toml</code> and safe defaults are considered in order. Invalid files, values and unknown keys stop startup.</p>
+        <pre><code># Safe defaults; keep these during evaluation
  erase_after_sync = false
  storage_pressure_cleanup = false
  min_free_space_mb = 200
- flash_read_compression = false</code></pre>
+ flash_read_compression = false  # compression is unsupported</code></pre>
         <p>Use the dashboard's Settings page to change the hotspot SSID and password. A Wi-Fi restart may disconnect the browser. If saving fails, update the Pi configuration over SSH and inspect the web-service log.</p>
-        <p>Leave <code>idle_shutdown_minutes = 0</code> during evaluation: the current web process cannot observe activity in the separate sync process.</p>
+        <p>Leave <code>idle_shutdown_minutes = 0</code> during evaluation. Shared transfer status is available, but automatic shutdown needs separate hardware acceptance.</p>
         <p>See the repository's <a href="https://github.com/proeugene/logfalcon/blob/main/config/logfalcon.toml">configuration file</a> for all available settings and their current defaults.</p>
       </section>
       <section id="led-reference" class="doc-section">
         <h2 class="section-label">LED reference</h2>
-        <p>The intended patterns are: slow pulse for boot, solid for ready, fast blink for work, a rapid burst followed by solid for completion, and SOS for error.</p>
-        <p><strong>Current limitation:</strong> LED access and persistence need hardware validation. The service restores the ready light after both success and failure. Use the service log to confirm the outcome.</p>
+        <p>The intended patterns are: slow pulse while waiting for the first transfer, solid after confirming an empty controller, fast blink for work, repeating double blink after a saved copy, and SOS for error.</p>
+        <p><strong>Current limitation:</strong> A dedicated service drives the LED from shared status and keeps errors distinct from success. LED paths and patterns still need hardware validation. Confirm the outcome against the dashboard and service log.</p>
       </section>
       <section id="troubleshooting" class="doc-section">
         <h2 class="section-label">Troubleshooting and administration</h2>
@@ -104,7 +104,7 @@ curl http://127.0.0.1/health</code></pre><p>The default SSH password is <code>lo
       </section>
       <section id="building" class="doc-section">
         <h2 class="section-label">Development</h2>
-        <p>Requires Go 1.23+. All application code is Go, with a stdlib HTTP interface and embedded HTML templates. No JavaScript framework is required.</p>
+        <p>Requires Go 1.27 (tested with 1.27.3). All application code is Go, with a stdlib HTTP interface and embedded HTML templates. No JavaScript framework is required.</p>
         <pre><code>git clone https://github.com/proeugene/logfalcon.git
 cd logfalcon
 make build
@@ -113,6 +113,7 @@ make lint     # Requires golangci-lint
 make build-pi
 make build-pi2</code></pre>
         <p>Tests run without hardware. The protocol, FC detection, storage, sync, web, LED and configuration code live in separate packages under <code>internal/</code>. Passing tests and builds do not validate real-device behaviour.</p>
+        <h3>Development diagnostics</h3><p>Extra protocol metadata is enabled by default (<code>DEBUG=true</code>), with UK Wi-Fi country <code>GB</code>. Shut down cleanly, insert the card into the Mac and copy <code>LOGFALCON-DIAGNOSTICS/latest.json</code>. It contains bounded, redacted recent events, not a complete journal. Abrupt power loss can lose the last events. See the <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md">diagnostics and physical acceptance instructions</a>. To reduce logging, set <code>DEBUG=false</code> in the boot configuration and reboot.</p>
         <h3>Preview the dashboard locally</h3>
         <pre><code>mkdir -p /tmp/logfalcon-preview
 LOGFALCON_STORAGE_PATH=/tmp/logfalcon-preview LOGFALCON_WEB_PORT=8080 ./bin/logfalcon --web</code></pre>

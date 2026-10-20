@@ -38,7 +38,9 @@ fi
 
 # Config
 mkdir -p "$CONFIG_DIR"
-cp "$REPO_DIR/config/logfalcon.toml" "$CONFIG_DIR/logfalcon.toml"
+if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]]; then
+    cp "$REPO_DIR/config/logfalcon.toml" "$CONFIG_DIR/logfalcon.toml"
+fi
 
 # Log storage
 mkdir -p "$LOG_DIR"
@@ -53,7 +55,8 @@ chmod +x "$INSTALL_DIR/config-apply.sh"
 mkdir -p /var/lib/logfalcon
 
 # Ownership
-chown -R bbsyncer:bbsyncer "$INSTALL_DIR" "$CONFIG_DIR"
+chown -R bbsyncer:bbsyncer "$CONFIG_DIR"
+chmod 600 "$CONFIG_DIR/logfalcon.toml"
 
 # ── Disable conflicting services ────────────────────────────────────────────
 # This is an AP-only appliance. Several services fight hostapd for wlan0.

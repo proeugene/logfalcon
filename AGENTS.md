@@ -38,7 +38,7 @@ No monorepo. No packages published. Internal packages under `internal/`:
 - SSE endpoint at `GET /events` streams sync status every 2 seconds.
 
 ## SD card image build
-Uses [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker. Run `cd pi-gen && bash build.sh` (requires Linux and Docker). Release CI builds and uploads images on `v*` tags via `.github/workflows/release.yml`.
+Uses [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker. Run `bash pi-gen/build.sh` from the repository root (requires Docker on macOS or Linux). The wrapper provides Linux tools, source checks, image shrinking/inspection, compression and checksums; `--check` stops before the OS-image build. Release CI builds and uploads images on `v*` tags via `.github/workflows/release.yml`.
 
 ## System integration
 - **udev**: `/etc/udev/rules.d/99-betaflight-fc.rules` triggers `logfalcon@ttyACM*.service` on FC plug-in

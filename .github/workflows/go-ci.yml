@@ -47,7 +47,7 @@ jobs:
         run: go test -v ./internal/integration ./internal/settings
 
       - name: ShellCheck
-        run: shellcheck install.sh scripts/install.sh system/config-apply.sh system/wifi-init.sh
+        run: shellcheck install.sh scripts/install.sh scripts/check-image-size.sh system/config-apply.sh system/wifi-init.sh
 
       - name: Print coverage
         run: go tool cover -func=cover.out | grep total

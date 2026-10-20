@@ -56,6 +56,10 @@ make build-pi    # Linux ARM6
 make build-pi2   # Linux ARM64
 ```
 
+Build a complete local SD image with Docker: `bash pi-gen/build.sh`. The script
+runs the Linux build tools inside Docker on macOS or Linux and saves the image,
+checksums and log under `pi-gen/deploy/`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 See [development diagnostics and physical testing](DEVELOPMENT_TESTING.md) for the default debug logging (`DEBUG=true`, UK country `GB`) and collecting `LOGFALCON-DIAGNOSTICS/latest.json` from the SD card on a Mac.
 
 Tests run without connected hardware. Passing tests and cross-compilation do not establish field reliability. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution instructions and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for image/release checks.

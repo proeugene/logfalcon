@@ -7,6 +7,7 @@
 #   ./scripts/inspect-image.sh                    (downloads latest release image)
 #
 # Requires: Docker (running), xz (for .xz images), curl
+# --native is reserved for the privileged all-in-one image-build container.
 # Works on macOS and Linux. No root needed — runs inside a privileged container.
 set -euo pipefail
 
@@ -17,8 +18,15 @@ warn() { echo -e "${YEL}  ⚠ $*${NC}"; }
 err()  { echo -e "${RED}  ✗ $*${NC}"; }
 hdr()  { echo -e "\n${CYN}══ $* ══${NC}"; }
 
-# ── Prereqs ───────────────────────────────────────────────────────────────────
-if ! docker info &>/dev/null; then
+NATIVE=0
+if [[ ${1:-} == --native ]]; then
+  [[ ${LOGFALCON_IMAGE_CONTAINER:-} == 1 && $(uname -s) == Linux && $EUID -eq 0 ]] || {
+    echo '--native is reserved for the Linux image-build container.' >&2; exit 2;
+  }
+  NATIVE=1
+  shift
+fi
+if [[ $NATIVE -eq 0 ]] && ! docker info &>/dev/null; then
   err "Docker is not running. Please start Docker Desktop and retry."
   exit 1
 fi
@@ -74,6 +82,11 @@ echo "Image: $IMG_FILE ($(du -h "$IMG_FILE" | cut -f1))"
 INNER_SCRIPT="$WORK_DIR/inner.sh"
 cat > "$INNER_SCRIPT" << 'INNER_EOF'
 
+AUDIT_IMAGE=$1
+redact_config() {
+  sed -E 's/^([[:space:]]*(PASSWORD|hotspot_password|wpa_passphrase|wpa_psk)[[:space:]]*=).*/\1[redacted]/'
+}
+
 RED='\033[0;31m'; YEL='\033[1;33m'; GRN='\033[0;32m'; CYN='\033[0;36m'; NC='\033[0m'
 ok()   { echo -e "${GRN}  ✓ $*${NC}"; }
 warn() { echo -e "${YEL}  ⚠ $*${NC}"; }
@@ -83,17 +96,17 @@ hdr()  { echo -e "\n${CYN}══ $* ══${NC}"; }
 # ── Mount both partitions using offset (works on macOS Docker / any Linux) ──
 # Get sector size and partition start offsets from sfdisk
 SECTOR_SIZE=512
-BOOT_START=$(sfdisk -d /logfalcon.img 2>/dev/null | awk '/start=/{if(NR==2) gsub(",",""); gsub("start=",""); print $4; exit}')
-ROOT_START=$(sfdisk -d /logfalcon.img 2>/dev/null | awk '/start=/{if(NR==3) gsub(",",""); gsub("start=",""); print $4; exit}')
+BOOT_START=$(sfdisk -d "$AUDIT_IMAGE" 2>/dev/null | awk '/start=/{if(NR==2) gsub(",",""); gsub("start=",""); print $4; exit}')
+ROOT_START=$(sfdisk -d "$AUDIT_IMAGE" 2>/dev/null | awk '/start=/{if(NR==3) gsub(",",""); gsub("start=",""); print $4; exit}')
 
 # Fallback: parse via fdisk if sfdisk gives unexpected output
 if [ -z "$BOOT_START" ] || [ -z "$ROOT_START" ]; then
-  BOOT_START=$(fdisk -l /logfalcon.img 2>/dev/null | awk 'NR>10 && /Linux/{print $2; exit}')
-  ROOT_START=$(fdisk -l /logfalcon.img 2>/dev/null | awk 'NR>10 && /Linux/{found++; if(found==2){print $2; exit}}')
+  BOOT_START=$(fdisk -l "$AUDIT_IMAGE" 2>/dev/null | awk 'NR>10 && /Linux/{print $2; exit}')
+  ROOT_START=$(fdisk -l "$AUDIT_IMAGE" 2>/dev/null | awk 'NR>10 && /Linux/{found++; if(found==2){print $2; exit}}')
 fi
 
 # More robust: use python to parse sfdisk json output
-eval "$(python3 - /logfalcon.img << 'PYEOF'
+eval "$(python3 - "$AUDIT_IMAGE" << 'PYEOF'
 import sys, json, subprocess
 out = subprocess.check_output(['sfdisk', '--json', sys.argv[1]]).decode()
 pt = json.loads(out)['partitiontable']
@@ -107,21 +120,30 @@ PYEOF
 BOOT_OFFSET=$(( BOOT_START * SECTOR_SIZE ))
 ROOT_OFFSET=$(( ROOT_START * SECTOR_SIZE ))
 
-BOOT_LOOP=$(losetup -f --show -o "$BOOT_OFFSET" /logfalcon.img)
-ROOT_LOOP=$(losetup -f --show -o "$ROOT_OFFSET" /logfalcon.img)
+BOOT_LOOP=""
+ROOT_LOOP=""
+cleanup() {
+  umount /mnt/root /mnt/boot 2>/dev/null || true
+  if [[ -n "$ROOT_LOOP" ]]; then losetup -d "$ROOT_LOOP" 2>/dev/null || true; fi
+  if [[ -n "$BOOT_LOOP" ]]; then losetup -d "$BOOT_LOOP" 2>/dev/null || true; fi
+}
+trap cleanup EXIT
 
+ensure_next_loop() {
+  local next
+  [[ -c /dev/loop-control ]] || mknod /dev/loop-control c 10 237
+  next=$(losetup -f)
+  [[ -b "$next" ]] || mknod "$next" b 7 "${next##*loop}"
+}
+ensure_next_loop
+BOOT_LOOP=$(losetup -f --show -o "$BOOT_OFFSET" "$AUDIT_IMAGE")
+ensure_next_loop
+ROOT_LOOP=$(losetup -f --show -o "$ROOT_OFFSET" "$AUDIT_IMAGE")
 mkdir -p /mnt/root /mnt/boot
 mount -o ro "$ROOT_LOOP" /mnt/root
 mount -o ro "$BOOT_LOOP" /mnt/boot
 echo "Partitions: boot@sector $BOOT_START  root@sector $ROOT_START (sector=$SECTOR_SIZE)"
 echo "Mounted: $BOOT_LOOP → /mnt/boot  |  $ROOT_LOOP → /mnt/root"
-
-# ── Cleanup on exit
-cleanup() {
-  umount /mnt/root /mnt/boot 2>/dev/null || true
-  losetup -d "$ROOT_LOOP" "$BOOT_LOOP" 2>/dev/null || true
-}
-trap cleanup EXIT
 
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "OS / kernel"
@@ -135,7 +157,7 @@ ls /mnt/boot/ | tr '\n' '  '; echo
 
 if [ -f /mnt/boot/logfalcon-config.txt ]; then
   ok "logfalcon-config.txt present"
-  grep -v "^#" /mnt/boot/logfalcon-config.txt | grep -v "^$" | sed 's/^/  /'
+  grep -v "^#" /mnt/boot/logfalcon-config.txt | grep -v "^$" | redact_config | sed 's/^/  /'
 else
   warn "logfalcon-config.txt MISSING from boot partition"
 fi
@@ -158,7 +180,7 @@ fi
 
 echo "  /etc/hostapd/hostapd.conf:"
 if [ -f /mnt/root/etc/hostapd/hostapd.conf ]; then
-  cat /mnt/root/etc/hostapd/hostapd.conf | sed 's/^/    /'
+  cat /mnt/root/etc/hostapd/hostapd.conf | redact_config | sed 's/^/    /'
 else
   err "  /etc/hostapd/hostapd.conf MISSING"
 fi
@@ -289,7 +311,7 @@ for p in /mnt/root/etc/logfalcon/logfalcon.toml /mnt/root/etc/logfalcon.toml; do
 done
 if [ -n "$TOML" ]; then
   ok "Config: $TOML"
-  cat "$TOML" | sed 's/^/  /'
+  cat "$TOML" | redact_config | sed 's/^/  /'
 else
   warn "logfalcon.toml not found in /etc/logfalcon/ or /etc/"
 fi
@@ -304,6 +326,10 @@ ls /mnt/root/etc/systemd/system/multi-user.target.wants/ 2>/dev/null | sort | se
 hdr "Potential issues summary"
 
 ISSUES=0
+if [ -z "$BINARY" ] || [ -z "$TOML" ]; then
+  err "CRITICAL: application binary or configuration missing"
+  ISSUES=$((ISSUES+1))
+fi
 
 if ! [ -f /mnt/root/etc/hostapd/hostapd.conf ]; then
   err "CRITICAL: hostapd.conf missing — no hotspot possible"
@@ -367,12 +393,16 @@ INNER_EOF
 # ── Run audit inside a privileged Linux container ────────────────────────────
 hdr "Mounting image partitions and auditing"
 
+if [[ $NATIVE -eq 1 ]]; then
+  bash -euo pipefail "$INNER_SCRIPT" "$IMG_FILE"
+else
 docker run --rm --privileged \
   -v "$IMG_FILE:/logfalcon.img:ro" \
   -v "$INNER_SCRIPT:/inner.sh:ro" \
   debian:bookworm-slim bash -euo pipefail -c \
   'apt-get update -qq >/dev/null &&
    apt-get install -y -qq --no-install-recommends fdisk mount python3 systemd >/dev/null &&
-   bash -euo pipefail /inner.sh'
+   bash -euo pipefail /inner.sh /logfalcon.img'
+fi
 
 echo -e "\n${GRN}Inspection complete.${NC}"

@@ -36,6 +36,8 @@ else
     exit 1
 fi
 
+install -m 644 "$REPO_DIR/LICENSE" "$INSTALL_DIR/LICENSE"
+
 # Config
 mkdir -p "$CONFIG_DIR"
 if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]]; then

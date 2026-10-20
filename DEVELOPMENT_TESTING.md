@@ -192,3 +192,109 @@ record their outcome and confusion. Fix observed failures before publication.
 The source is ready for that image-build/physical-evaluation step. It is **not
 release-ready**: native Linux/image/hardware evidence and the maintainer actions
 above remain open. Further internal cosmetic work is not the next priority.
+
+## Image-build follow-up - 20 October 2026
+
+[Build 39463006095](https://github.com/proeugene/logfalcon/actions/runs/39463006095)
+ran against commit `56a2e7969d9d4e8ec99cd03ed378ade3dfc6e96a`. Image construction
+and PiShrink completed. The job then rejected the approximately 2,159 MiB raw
+image against a 600 MiB raw-size limit, before compression/upload. This updates
+the earlier local record: a CI image build has now been attempted, but the
+pipeline has not completed and there is no physical acceptance result.
+
+The [pinned pi-gen partition layout](https://github.com/RPi-Distro/pi-gen/blob/1c2abf50924d5bfee3527657af74ddfb1da52904/export-image/prerun.sh#L12)
+reserves 512 MiB for boot, making the old total raw budget unrealistic. Both
+image workflows now use the same size checker: at most 3 GiB raw and 600 MiB
+compressed. These are separate engineering budgets; the compressed size is
+still unknown. No package or licence notice was removed to force this check.
+Chroot size reporting now uses directory usage and installed-package sizes;
+the old `df /` output described the build host's 145 GB filesystem.
+
+Local verification of this follow-up: integration suite passed (14 cases),
+including sparse fixtures matching the reported failure size and exact
+raw/compressed boundaries; ShellCheck, actionlint, integration-package lint and
+diff whitespace checks passed. Sparse fixtures test the limits only; they are
+not real images and do not establish compression ratio or bootability.
+
+Next: commit/push this patch, then start a **new** image workflow on that commit.
+Re-running the old run uses its original code. Check the compressed size and
+image contents before flashing and carrying out physical acceptance above.
+The complete image pipeline has not been rerun for this local patch.
+
+## One-command local Docker builder - 20 October 2026
+
+Run `bash pi-gen/build.sh` from this repository on macOS or Linux. The previous
+Linux-host wrapper has been replaced: Go, QEMU, pi-gen, filesystem tools and
+inspection now run inside a pinned Linux Docker image. Docker is the only
+additional host dependency. `--check` runs the Docker capability probes, source
+checks and Pi binary builds without creating the OS image.
+
+The full command snapshots the current build inputs, checks source, builds the
+32-bit Bookworm image with the ARM6 binary, runs pinned PiShrink, checks the raw
+budget, inspects the image, compresses/tests it and checks the download budget.
+Each output folder under `pi-gen/deploy/` contains the final `.img.xz`, package
+`.info`, `checksums.txt`, source hashes, build identity and log. There is no
+flashing or publishing step. The privileged container uses a temporary Docker
+work volume; source is mounted read-only. Per-run ARM registrations and loop
+devices are cleaned up, including a separate cleanup pass after interruption.
+Inspection redacts hotspot passwords before they reach the build log.
+
+Actual local evidence: Docker Desktop 29.9.1 on Apple Silicon completed
+`bash pi-gen/build.sh --check`. A real armhf binary ran within a chroot, a loop
+filesystem was created/mounted/unmounted, the complete Go race suite and vet
+passed on Linux, govulncheck found no reachable vulnerabilities (one uncalled
+required-module advisory), and ARM6/ARM64 binary builds passed. The final check
+log is `pi-gen/deploy/20261020T195623Z-64881/build.log` (local/generated, ignored).
+The integration suite includes 17 passing cases, with new checks for help,
+native-inspection access and credential redaction. ShellCheck, integration lint,
+actionlint and whitespace checks passed.
+
+At this initial preflight checkpoint, the full local image sequence had not
+been executed. Later full-build results are recorded below. A Docker capability
+probe is not proof of a bootable image; physical acceptance remains separate.
+
+### Apple Silicon bootstrap correction - 20 October 2026
+
+The first full local runs failed before creating the base root filesystem:
+`setarch linux32` was rejected by Docker's aarch64 kernel. The earlier probe
+used a direct chroot and therefore missed pi-gen's personality/capsh path.
+Invoking upstream with `bash ./build.sh` also discarded its shebang's `-e`,
+allowing subsequent stages to run against a missing root filesystem.
+
+The wrapper now probes the actual capsh/chroot path, preserves linux32 where
+supported and bypasses it only on an aarch64 kernel with working ARM emulation.
+A guarded adjustment to the pinned pi-gen copy uses that same route and
+propagates bootstrap failures. Upstream is invoked with `bash -e` so stage
+errors stop the build. These adjustments affect the temporary pi-gen copy;
+the upstream pin remains unchanged.
+
+Verification: all 22 integration cases and integration lint pass; ShellCheck
+and whitespace checks pass. Regression cases cover both personality routes and
+failure propagation. Docker `--check` passed with the revised chroot probes,
+Linux race suite/vet/vulnerability scan and ARM6/ARM64 builds
+(`pi-gen/deploy/20261020T201051Z-69477/build.log`). The subsequent full run
+(`pi-gen/deploy/20261020T201128Z-70007/build.log`) passed bootstrap but stopped
+correctly on a Raspbian mirror HTTP 400 during firmware downloads; apt also
+reported a pipelining/server-proxy response problem. The builder now disables
+HTTP pipelining and sets three retries while installing packages, then removes
+that temporary apt configuration before export. A regression case checks its
+installation and removal.
+
+The retry completed successfully (exit 0), recorded in
+`pi-gen/deploy/20261020T201821Z-72027/build.log`. OS creation, application
+installation, PiShrink, offline image inspection, compression, `xz -t` and all
+four output checksum checks passed. The shrunk raw image is 2,263,908,864 bytes
+(within the 3 GiB budget); the compressed image is 494,095,852 bytes (within
+600 MiB). Inspection identified the statically linked 32-bit ARM application
+and reported no configuration issues.
+
+Artifact: `pi-gen/deploy/20261020T201821Z-72027/2026-10-20-logfalcon.img.xz`
+
+SHA-256: `fc91e7d325c08709cffc42b23452cdd68f809a747d57f24ffbe6657601515178`
+
+This is a local image from the modified `test` working tree at base commit
+`56a2e7969d9d4e8ec99cd03ed378ade3dfc6e96a`, with exact input hashes beside it.
+The additional temporary-download-options regression case was added after the
+build snapshot and passed locally; it changes no application/image code.
+Next: flash this exact artifact and carry out physical acceptance above.
+Boot, Wi-Fi, USB/controller copying and power-cycle behaviour remain untested.

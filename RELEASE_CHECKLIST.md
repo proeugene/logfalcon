@@ -13,6 +13,10 @@ sign-off.
 3. Build from one recorded commit on Linux. Inspect that exact image; record its
    SHA-256. Cross-compilation is separate evidence. The pinned pi-gen/PiShrink
    commits do not make changing OS/APT inputs reproducible.
+   Image budgets are separate: at most **3 GiB raw** after shrinking and
+   **600 MiB compressed** for download. The pinned builder reserves 512 MiB
+   for boot, so 600 MiB cannot be a viable raw-image budget. Neither budget
+   proves bootability; inspect contents and retain physical acceptance.
 4. Flash the candidate to a spare card and complete physical acceptance with
    erase and cleanup disabled. Record the real Pi/FC/firmware, log sizes,
    outcomes, measured timings, interrupted copies and reboot/settings recovery.

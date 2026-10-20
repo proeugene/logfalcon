@@ -6,8 +6,9 @@ scope before implementing it. See [architecture](docs/ARCHITECTURE.md).
 
 Use Go **1.27.3** (the currently tested patch), Linux or macOS. `go.mod` requires
 Go 1.27; older toolchains are not supported because storage uses `os.Root`.
-The application needs no Python or frontend build. Linux is required for native installer integration and the image build. The
-local installer fixture uses a BSD sed adapter on macOS; Linux CI runs GNU sed.
+The application needs no Python or frontend build. Installer integration runs
+with GNU sed on Linux; the macOS fixture adapts BSD sed. The image builder below
+provides Linux tools inside Docker on either host.
 
 ```sh
 go mod download
@@ -38,8 +39,34 @@ checksum and results when claiming compatibility. Never include passwords, full
 config files, private controller dumps or unreviewed diagnostic bundles in an
 issue. See [SECURITY.md](SECURITY.md) for sensitive reports.
 
-Linux + Docker can build the image with `cd pi-gen && bash build.sh`. Image
-inspection and cross-compilation do not establish hardware reliability. Use
-[DEVELOPMENT_TESTING.md](DEVELOPMENT_TESTING.md) for physical acceptance and
+To build the complete SD image on macOS (including Apple Silicon) or Linux,
+install/start Docker, then run from this checkout:
+
+```sh
+bash pi-gen/build.sh
+```
+
+No host Go, Python, QEMU or Linux VM setup is required. The script prepares a
+pinned Linux/Go tool image, checks ARM emulation and mounts, runs race tests,
+vet and govulncheck, builds the Pi binaries, builds Raspberry Pi OS, shrinks and
+inspects the image, compresses it and writes SHA-256 checksums. The image is
+32-bit Bookworm with the ARM6 binary, suitable for evaluation on either Pi target.
+
+Use `bash pi-gen/build.sh --check` to exercise the toolchain/source checks and
+binary builds without the long OS-image build. Outputs are in
+`pi-gen/deploy/<run>/`: `.img.xz`, package `.info`, `checksums.txt`, source hashes,
+build identity and `build.log`. Each run has a new folder and temporary Docker
+work volume; existing images and source changes are preserved. Tool-image layers
+are cached. Temporary work/container resources are removed on exit.
+
+The builder requires privileged Docker for ARM binfmt registration, loop devices
+and filesystem mounts. It mounts this checkout read-only and writes to its own
+output folder. Locked-down Docker installations may reject those operations;
+`--check` detects this early. It does not flash cards, modify host networking or
+publish a release. Interrupted/failed builds retain their log, without claiming
+a finished image.
+
+Image inspection and cross-compilation do not establish hardware reliability.
+Use [DEVELOPMENT_TESTING.md](DEVELOPMENT_TESTING.md) for physical acceptance and
 [AI-assisted development](docs/AI_ASSISTED_DEVELOPMENT.md) for how assistance is
 recorded without inventing human review or validation.

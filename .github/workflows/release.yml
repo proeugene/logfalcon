@@ -211,24 +211,14 @@ jobs:
           SHRUNK_SIZE=$(du -h "$IMAGE_FILE" | cut -f1)
           echo "After PiShrink: $SHRUNK_SIZE  ($IMAGE_FILE)"
 
-          # ── Image size gate ─────────────────────────────────────────────────
-          SHRUNK_BYTES=$(stat -c%s "$IMAGE_FILE")
-          SHRUNK_MB=$(( SHRUNK_BYTES / 1024 / 1024 ))
-          IMAGE_LIMIT_MB=600
-          IMAGE_LIMIT_BYTES=$(( IMAGE_LIMIT_MB * 1024 * 1024 ))
-
-          echo "Shrunk image size: ${SHRUNK_MB} MB ($SHRUNK_BYTES bytes)"
-
-          if [ "$SHRUNK_BYTES" -ge "$IMAGE_LIMIT_BYTES" ]; then
-            echo "::error::Image size ${SHRUNK_MB} MB >= ${IMAGE_LIMIT_MB} MB limit — size regression detected"
-            exit 1
-          fi
-
-          echo "Image size OK: ${SHRUNK_MB} MB < ${IMAGE_LIMIT_MB} MB"
+          # Raw flash image: up to 3 GiB (pi-gen boot alone is 512 MiB).
+          bash "$GITHUB_WORKSPACE/scripts/check-image-size.sh" raw "$IMAGE_FILE"
 
           xz -9 -T0 "$IMAGE_FILE"
           FINAL_SIZE=$(du -h "${IMAGE_FILE}.xz" | cut -f1)
           echo "Compressed:     $FINAL_SIZE  (${IMAGE_FILE}.xz)"
+          # Download budget applies to the compressed artifact, not the raw disk.
+          bash "$GITHUB_WORKSPACE/scripts/check-image-size.sh" compressed "${IMAGE_FILE}.xz"
 
           {
             echo "## Image sizes"

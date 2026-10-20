@@ -2,8 +2,8 @@
 # Minimize image size.
 # Runs inside the image chroot after logfalcon is fully installed.
 
-echo "=== [logfalcon] Pre-cleanup disk usage ==="
-df -h /
+echo "=== [logfalcon] Pre-cleanup rootfs contents ==="
+du -xsh /usr /var /opt /boot
 
 # The canonical journald configuration was installed by 00-run.sh.
 # Do not overwrite persistence/retention settings here.
@@ -73,5 +73,8 @@ systemctl disable bluetooth.service 2>/dev/null || true
 # ---- 9. Temp / history ------------------------------------------------------
 rm -rf /tmp/* /var/tmp/* /root/.bash_history 2>/dev/null || true
 
-echo "=== [logfalcon] Post-cleanup disk usage ==="
-df -h /
+echo "=== [logfalcon] Post-cleanup rootfs contents ==="
+# df in this chroot reports the build host's filesystem, not the exported image.
+du -xh --max-depth=1 /usr /var /opt /boot
+echo "=== [logfalcon] Largest installed packages (KiB) ==="
+dpkg-query -W -f='${Installed-Size}\t${Package}\n' | sort -nr | sed -n '1,20p'

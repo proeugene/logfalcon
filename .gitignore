@@ -17,6 +17,7 @@ logfalcon
 
 # pi-gen build artifacts
 pi-gen/pi-gen-repo/
+pi-gen/deploy/
 cover.out
 
 # AI session transcripts

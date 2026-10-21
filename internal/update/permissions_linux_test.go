@@ -71,7 +71,7 @@ func TestWorkerAndServiceAccountShareLock(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer os.RemoveAll(dir)
+			defer func() { _ = os.RemoveAll(dir) }()
 			if err := os.Chmod(dir, 0755); err != nil {
 				t.Fatal(err)
 			}
@@ -127,7 +127,7 @@ func TestWorkerAndServiceAccountShareLock(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 			if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 				t.Fatal(err)
 			}

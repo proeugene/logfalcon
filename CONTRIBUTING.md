@@ -16,6 +16,7 @@ go test -race -coverprofile=cover.out -covermode=atomic ./...
 go vet ./...
 go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 golangci-lint run ./...
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 golangci-lint run ./...
 go test ./internal/msp -run='^$' -fuzz=FuzzFrameDecoder -fuzztime=20s -parallel=2
 go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
 govulncheck ./...
@@ -58,6 +59,33 @@ binary builds without the long OS-image build. Outputs are in
 build identity and `build.log`. Each run has a new folder and temporary Docker
 work volume; existing images and source changes are preserved. Tool-image layers
 are cached. Temporary work/container resources are removed on exit.
+
+The local builder and both image workflows use the same OS cache policy:
+`main` and release tags (`v*`) build the OS from scratch; every other named
+branch reuses compatible base OS stages 0–2. Missing, incomplete or corrupt
+snapshots trigger a fresh build. Detached/unknown refs also build from scratch.
+The current application and export stages, source checks, image inspection and
+checksums run every time. The first build for a cache key is therefore still slow.
+
+```sh
+bash pi-gen/build.sh --cache-policy  # print clean/cached without Docker
+bash pi-gen/build.sh --clean         # force a fresh OS on any branch
+```
+
+Local OS snapshots persist in Docker volume `logfalcon-os-cache-v1`, separate
+from disposable build work. CI persists the archive through Actions cache on
+development branches only; its manual image/release workflows also offer a
+`clean` checkbox. The key covers pi-gen/config, the pinned tools/patches in the
+builder and cache format. Application-only changes reuse the base. Snapshots
+preserve Linux ownership, links, ACLs and extended attributes, include a SHA-256
+and creation/builder record, and contain no installed LogFalcon/device state.
+Only successful complete image builds publish/refresh a snapshot. The build-info
+file records whether a base was reused and its origin. Use `--clean` periodically
+to pick up OS package updates; an unchanged recipe does not detect newer APT
+packages. Main/release builds always refresh those OS inputs.
+
+On macOS, run the Linux-target lint command above as well as native lint so that
+Linux-only files are checked. Linux CI remains authoritative for native tests.
 
 The builder requires privileged Docker for ARM binfmt registration, loop devices
 and filesystem mounts. It mounts this checkout read-only and writes to its own

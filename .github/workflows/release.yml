@@ -10,6 +10,10 @@ on:
         description: 'Upload artifacts (useful for testing)'
         type: boolean
         default: true
+      clean:
+        description: 'Force a fresh base OS on a development branch'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -140,124 +144,55 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: '1.27.3'
+          fetch-depth: 0
 
       - name: Free disk space
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
           df -h /
 
-      - name: Install QEMU for ARM emulation
-        run: sudo apt-get update && sudo apt-get install -y qemu-user-static
-
-      - name: Cross-compile logfalcon for ARM
-        run: |
-          make VERSION="$GITHUB_REF_NAME" build-pi
-          make VERSION="$GITHUB_REF_NAME" build-pi2
-          cp bin/logfalcon-arm6 bin/logfalcon
-          ls -la bin/
-
-      - name: Binary size gate — ARM6
-        run: |
-          BINARY="bin/logfalcon-arm6"
-          if [ ! -f "$BINARY" ]; then
-            echo "::error::ARM6 binary not found at $BINARY"
-            exit 1
-          fi
-          SIZE_BYTES=$(stat -c%s "$BINARY")
-          SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
-          LIMIT_MB=10
-          LIMIT_BYTES=$(( LIMIT_MB * 1024 * 1024 ))
-          echo "ARM6 binary: $(du -h "$BINARY" | cut -f1) ($SIZE_BYTES bytes)"
-          if [ "$SIZE_BYTES" -gt "$LIMIT_BYTES" ]; then
-            echo "::error::ARM6 binary is ${SIZE_MB} MB — exceeds ${LIMIT_MB} MB limit"
-            exit 1
-          fi
-          echo "Binary size OK: ${SIZE_MB} MB <= ${LIMIT_MB} MB"
-
-      - name: Clone pi-gen
-        run: |
-          git init pi-gen/pi-gen-repo
-          git -C pi-gen/pi-gen-repo remote add origin https://github.com/RPi-Distro/pi-gen.git
-          git -C pi-gen/pi-gen-repo fetch --depth 1 origin 1c2abf50924d5bfee3527657af74ddfb1da52904
-          git -C pi-gen/pi-gen-repo checkout --detach FETCH_HEAD
-
-      - name: Configure pi-gen
-        run: |
-          cp pi-gen/config pi-gen/pi-gen-repo/config
-          rm -rf pi-gen/pi-gen-repo/stage-logfalcon
-          cp -r pi-gen/stage-logfalcon pi-gen/pi-gen-repo/stage-logfalcon
-          rm -rf pi-gen/pi-gen-repo/logfalcon-src
-          rsync -a --exclude='.git' --exclude='pi-gen' \
-              ./ pi-gen/pi-gen-repo/logfalcon-src/
-          touch pi-gen/pi-gen-repo/stage3/SKIP pi-gen/pi-gen-repo/stage3/SKIP_IMAGES
-          touch pi-gen/pi-gen-repo/stage4/SKIP pi-gen/pi-gen-repo/stage4/SKIP_IMAGES
-          touch pi-gen/pi-gen-repo/stage5/SKIP pi-gen/pi-gen-repo/stage5/SKIP_IMAGES
-          touch pi-gen/pi-gen-repo/stage2/SKIP_IMAGES
-
-      - name: Build image
-        run: |
-          cd pi-gen/pi-gen-repo
-          ./build-docker.sh
+      - name: Select OS build policy
+        id: policy
         env:
-          CLEAN: 1
-          CONTINUE: 0
-          PRESERVE_CONTAINER: 0
-
-      - name: Shrink and compress image
+          FORCE_CLEAN: ${{ inputs.clean }}
         run: |
-          find pi-gen/pi-gen-repo/deploy -maxdepth 1 -type f -print || true
-          cd pi-gen/pi-gen-repo/deploy
+          args=()
+          if [[ "$FORCE_CLEAN" == true ]]; then args+=(--clean); fi
+          echo "policy=$(bash pi-gen/build.sh --cache-policy "${args[@]}")" >> "$GITHUB_OUTPUT"
+          echo "cache_allowed=$(bash pi-gen/build.sh --cache-policy)" >> "$GITHUB_OUTPUT"
 
-          IMAGE_FILE=$(find . -maxdepth 1 -type f -name '*.img' -printf '%f\n' | sort | head -n 1)
-          if [ -z "$IMAGE_FILE" ]; then
-            echo "::error::No .img file found in deploy directory"
-            exit 1
-          fi
+      - name: Restore base OS for development branches
+        id: os_cache
+        if: steps.policy.outputs.cache_allowed == 'cached' && inputs.clean != true
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: pi-gen/cache
+          key: os-base-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pi-gen/config', 'pi-gen/build.sh', 'pi-gen/cache.sh') }}-lookup
+          restore-keys: os-base-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pi-gen/config', 'pi-gen/build.sh', 'pi-gen/cache.sh') }}-
 
-          # Install PiShrink pinned to a specific commit (5f358d03eed4b7334657ee93867826a2b42f112a)
-          # instead of the mutable master branch.
-          wget -qO /usr/local/bin/pishrink.sh \
-            https://raw.githubusercontent.com/Drewsif/PiShrink/5f358d03eed4b7334657ee93867826a2b42f112a/pishrink.sh
-          chmod +x /usr/local/bin/pishrink.sh
+      - name: Build and inspect image
+        id: image
+        env:
+          LF_OS_CACHE_DIR: ${{ github.workspace }}/pi-gen/cache
+          FORCE_CLEAN: ${{ inputs.clean }}
+        run: |
+          args=()
+          if [[ "$FORCE_CLEAN" == true ]]; then args+=(--clean); fi
+          bash pi-gen/build.sh "${args[@]}"
 
-          RAW_SIZE=$(du -h "$IMAGE_FILE" | cut -f1)
-          echo "Raw image:      $RAW_SIZE  ($IMAGE_FILE)"
-
-          sudo /usr/local/bin/pishrink.sh "$IMAGE_FILE"
-          SHRUNK_SIZE=$(du -h "$IMAGE_FILE" | cut -f1)
-          echo "After PiShrink: $SHRUNK_SIZE  ($IMAGE_FILE)"
-
-          # Raw flash image: up to 3 GiB (pi-gen boot alone is 512 MiB).
-          bash "$GITHUB_WORKSPACE/scripts/check-image-size.sh" raw "$IMAGE_FILE"
-
-          xz -9 -T0 "$IMAGE_FILE"
-          FINAL_SIZE=$(du -h "${IMAGE_FILE}.xz" | cut -f1)
-          echo "Compressed:     $FINAL_SIZE  (${IMAGE_FILE}.xz)"
-          # Download budget applies to the compressed artifact, not the raw disk.
-          bash "$GITHUB_WORKSPACE/scripts/check-image-size.sh" compressed "${IMAGE_FILE}.xz"
-
-          {
-            echo "## Image sizes"
-            echo "| Stage | Size |"
-            echo "|---|---|"
-            echo "| Raw .img | $RAW_SIZE |"
-            echo "| After PiShrink | $SHRUNK_SIZE |"
-            echo "| Final .img.xz | $FINAL_SIZE |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
+      - name: Name release image
+        env:
+          BUILT_IMAGE: ${{ steps.image.outputs.image_path }}
+        run: |
           PUBLISHED_IMAGE="logfalcon-${GITHUB_REF_NAME//\//-}-arm6.img.xz"
-          mv "${IMAGE_FILE}.xz" "$PUBLISHED_IMAGE"
-          {
-            echo "IMAGE_FILE=$PUBLISHED_IMAGE"
-            echo "IMAGE_PATH=pi-gen/pi-gen-repo/deploy/$PUBLISHED_IMAGE"
-          } >> "$GITHUB_ENV"
-
-      - name: Inspect exact image
-        run: bash scripts/inspect-image.sh "${{ env.IMAGE_PATH }}"
+          IMAGE_PATH="${BUILT_IMAGE%/*}/$PUBLISHED_IMAGE"
+          mv "$BUILT_IMAGE" "$IMAGE_PATH"
+          # Retain a valid checksum record after renaming the image.
+          cd "${IMAGE_PATH%/*}"
+          sha256sum "$PUBLISHED_IMAGE" ./*.info build-info.txt source-files.sha256 > checksums.txt
+          sha256sum --check checksums.txt
+          echo "IMAGE_PATH=$IMAGE_PATH" >> "$GITHUB_ENV"
 
       - name: Upload image artifact
         if: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.upload_artifact) }}
@@ -265,7 +200,15 @@ jobs:
         with:
           name: logfalcon-image
           path: ${{ env.IMAGE_PATH }}
+          if-no-files-found: error
           retention-days: 7
+
+      - name: Save successfully refreshed base OS
+        if: steps.policy.outputs.cache_allowed == 'cached' && steps.image.outputs.os_cache_reused != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: pi-gen/cache
+          key: os-base-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pi-gen/config', 'pi-gen/build.sh', 'pi-gen/cache.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   release:
     name: Create Release

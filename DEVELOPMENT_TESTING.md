@@ -483,3 +483,35 @@ update state under the lock, and rejecting unsafe lock files.
 These are automated process/filesystem checks. No SD image was rebuilt, no
 systemd-managed appliance update was installed and no Pi/FC/power-loss acceptance
 was performed in this pass. Exact-image physical acceptance remains required.
+
+### Branch-based OS cache and Linux lint: 21 October 2026
+
+The shared local/CI image builder now builds base OS stages 0–2 from scratch on
+main and release tags (`v*`), and reuses a compatible snapshot on other named
+branches. Unknown/detached refs are clean. `--clean` forces a fresh OS, and
+`--cache-policy` reports the choice without Docker. Both image workflows use
+this builder, with branch-scoped Actions restore/save on development branches.
+Fresh snapshots are published only after complete image inspection/checksums;
+the current application/export stages always run. The source snapshot now also
+includes the public update-key directory used by the shared image installer.
+
+Native and Linux-target pinned default lint passed with zero issues. The two
+unchecked cleanup returns in the Linux-only update permission regression were
+fixed. The full macOS Go race suite and vet passed. Linux container race tests
+passed for integration and update, including policy selection, local branch/tag
+selection, forced clean, warm reuse, invalidation, corrupt/incomplete archives,
+failed-build preservation, link/mode preservation and fresh application/export
+execution. OS-stage lifecycle tests use a small fixture, not a complete OS.
+ShellCheck, bash syntax checks and actionlint passed for the changed scripts and
+workflows.
+
+The actual `bash pi-gen/build.sh --check` run passed on this checkout using
+Docker on Apple Silicon: ARM chroot, loop/mount probes, all Linux race tests,
+vet, govulncheck and ARM6/ARM64 binary builds. Govulncheck reported no affected
+code (one unused module advisory). Its log is in ignored local output
+`pi-gen/deploy/20261021T134501Z-60861/build.log`.
+
+No full cold/warm SD image build, remote Actions execution or physical Pi test
+was performed for this change. The first real development image build must
+populate the cache; a second run is needed to measure the actual saving. Main
+and release images still require their fresh full build and physical acceptance.

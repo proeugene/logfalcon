@@ -7,6 +7,10 @@ PIGEN_COMMIT=1c2abf50924d5bfee3527657af74ddfb1da52904
 PISHRINK_COMMIT=5f358d03eed4b7334657ee93867826a2b42f112a
 GO_IMAGE=golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=pi-gen/cache.sh
+source "$SCRIPT_DIR/cache.sh"
+
 # pi-gen assumes linux32 is supported. Apple Silicon Docker kernels can run
 # armhf through QEMU while rejecting that optional personality setting.
 pigen_capsh() {
@@ -109,7 +113,7 @@ container_main() {
     rm -rf /work/probe.img /work/probe-mount /work/arm-probe
     echo 'Docker checks passed: ARM chroot, loop device and filesystem mount.'
 
-    local commit version state snapshot image filename
+    local commit version state snapshot image filename cache_key
     commit=$(git -c safe.directory=/source -C /source rev-parse HEAD)
     version=$(git -c safe.directory=/source -C /source describe --tags --always --dirty)
     state=$(git -c safe.directory=/source -C /source status --porcelain --untracked-files=normal)
@@ -119,7 +123,7 @@ container_main() {
     # credentials, local logs, prior images or Docker work directories are copied.
     mkdir -p /work/src
     tar -C /source -cf - cmd internal config system boot scripts \
-        pi-gen/config pi-gen/build.sh pi-gen/stage-logfalcon go.mod go.sum Makefile install.sh LICENSE |
+        pi-gen/config pi-gen/build.sh pi-gen/cache.sh pi-gen/stage-logfalcon update-keys go.mod go.sum Makefile install.sh LICENSE |
         tar -C /work/src -xf -
     cd /work/src
     find . -type f -print0 | sort -z | xargs -0 sha256sum > /output/source-files.sha256
@@ -159,7 +163,8 @@ container_main() {
     # Keep the Linux filesystem on a Docker volume, not a macOS bind mount.
     # Disable upstream's interactive progress and force the pinned builder ID.
     # Explicit -e preserves upstream's #!/bin/bash -e when invoking with bash.
-    GIT_HASH="$PIGEN_COMMIT" CLEAN=1 USE_QEMU=1 bash -e ./build.sh
+    cache_key=$(os_cache_key /work/src)
+    run_pigen /work/pi-gen /cache "$cache_key" "$LF_OS_CACHE_POLICY" /output/build-info.txt
     shopt -s nullglob
     local images=(/work/pi-gen/deploy/*.img)
     [[ ${#images[@]} -eq 1 ]] || { echo 'Expected exactly one generated .img.' >&2; exit 1; }
@@ -179,6 +184,9 @@ container_main() {
     cp "/work/pi-gen/deploy/${filename%.img}.info" /output/
     sha256sum "${filename}.xz" "${filename%.img}.info" build-info.txt source-files.sha256 > checksums.txt
     sha256sum --check checksums.txt
+    if [[ $LF_OS_CACHE_POLICY == clean || ! -s /work/pi-gen/os-base.info ]]; then
+        os_cache_save /cache "$cache_key" /work/pi-gen/work/logfalcon/stage2/rootfs "$LF_BUILDER_IMAGE"
+    fi
     echo "SUCCESS: ${filename}.xz is ready for physical evaluation."
 }
 
@@ -190,18 +198,41 @@ fi
 
 host_main() {
 mode=build
-case "${1:-}" in
+force_clean=0
+policy_only=0
+for option in "$@"; do
+case "$option" in
     --help|-h)
-        echo 'Usage: bash pi-gen/build.sh [--check]'
+        echo 'Usage: bash pi-gen/build.sh [--check] [--clean] [--cache-policy]'
         echo 'Default: build, shrink, inspect, compress and checksum the current checkout.'
+        echo 'OS cache: main and release tags (v*) build from scratch; other branches reuse compatible stages 0–2.'
+        echo '--clean: force a fresh OS build and refresh the cache after success.'
+        echo '--cache-policy: print clean/cached for this ref without requiring Docker.'
         echo '--check: validate Docker, ARM emulation, source checks and Pi binaries without building an OS image.'
         echo 'Output: pi-gen/deploy/<run>/ (image, checksums, source identity and build.log).'
         exit 0 ;;
     --check) mode=check ;;
-    '') ;;
-    *) echo 'Usage: bash pi-gen/build.sh [--check]' >&2; exit 2 ;;
+    --clean) force_clean=1 ;;
+    --cache-policy) policy_only=1 ;;
+    *) echo "Unknown option: $option" >&2; exit 2 ;;
 esac
-[[ $# -le 1 ]] || { echo 'Too many arguments.' >&2; exit 2; }
+done
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+build_ref=${GITHUB_REF:-}
+if [[ $build_ref == refs/pull/* && -n ${GITHUB_HEAD_REF:-} ]]; then
+    build_ref="refs/heads/$GITHUB_HEAD_REF"
+fi
+if [[ -z $build_ref ]]; then
+    build_ref=$(git -C "$REPO_ROOT" symbolic-ref -q HEAD || true)
+    if [[ -z $build_ref ]]; then
+        release_tag=$(git -C "$REPO_ROOT" describe --tags --exact-match --match 'v*' HEAD 2>/dev/null || true)
+        if [[ -n $release_tag ]]; then build_ref="refs/tags/$release_tag"; fi
+    fi
+fi
+cache_policy=$(os_cache_policy "$build_ref")
+if [[ $force_clean == 1 ]]; then cache_policy=clean; fi
+if [[ $policy_only == 1 ]]; then echo "$cache_policy"; return; fi
+echo "OS build policy: $cache_policy (ref: ${build_ref:-detached/unknown})."
 command -v docker >/dev/null || { echo 'Install Docker Desktop (Mac) or Docker Engine (Linux) first.' >&2; exit 1; }
 if ! docker info >/dev/null 2>&1; then
     if [[ $(uname -s) == Darwin ]]; then
@@ -215,8 +246,6 @@ if ! docker info >/dev/null 2>&1; then
     docker info >/dev/null 2>&1 || { echo 'Docker is not ready. Start it and retry.' >&2; exit 1; }
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 output="$SCRIPT_DIR/deploy/$run_id"
 container="logfalcon-image-$run_id"
@@ -227,6 +256,7 @@ tooling=$(mktemp -d)
 volume_created=0
 builder_id=""
 cp "$SCRIPT_DIR/build.sh" "$tooling/entry.sh"
+cp "$SCRIPT_DIR/cache.sh" "$tooling/cache.sh"
 cleanup() {
     local result=$?
     trap - EXIT
@@ -282,17 +312,39 @@ docker build -t "$builder" "$tooling" 2>&1 | tee "$output/build.log"
 builder_id=$(docker image inspect "$builder" --format '{{.Id}}')
 docker volume create "$volume" >/dev/null
 volume_created=1
+cache_mount=()
+if [[ -n ${LF_OS_CACHE_DIR:-} ]]; then
+    mkdir -p "$LF_OS_CACHE_DIR"
+    cache_dir=$(cd "$LF_OS_CACHE_DIR" && pwd)
+    cache_mount=(--mount "type=bind,source=$cache_dir,target=/cache")
+else
+    docker volume create logfalcon-os-cache-v1 >/dev/null
+    cache_mount=(--mount "type=volume,source=logfalcon-os-cache-v1,target=/cache")
+fi
 # Privilege is needed for ARM binfmt, loop devices and mounts. No host Docker
 # socket or host devices are bind-mounted; the source checkout is read-only.
 docker run --rm --init --privileged --name "$container" \
     --mount "type=bind,source=$REPO_ROOT,target=/source,readonly" \
     --mount "type=volume,source=$volume,target=/work" \
+    "${cache_mount[@]}" \
     --mount "type=bind,source=$output,target=/output" \
     --mount "type=bind,source=$tooling/entry.sh,target=/run/logfalcon-build.sh,readonly" \
+    --mount "type=bind,source=$tooling/cache.sh,target=/run/cache.sh,readonly" \
     -e LOGFALCON_IMAGE_CONTAINER=1 -e "LF_OUTPUT_UID=$(id -u)" -e "LF_OUTPUT_GID=$(id -g)" \
-    -e "LF_BUILDER_IMAGE=$builder_id" -e "LF_RUN_ID=$run_id" "$builder_id" \
+    -e "LF_BUILDER_IMAGE=$builder_id" -e "LF_RUN_ID=$run_id" -e "LF_OS_CACHE_POLICY=$cache_policy" "$builder_id" \
     bash /run/logfalcon-build.sh --container "$mode" 2>&1 | tee -a "$output/build.log"
 if [[ $mode == build ]]; then
+    if [[ -n ${GITHUB_OUTPUT:-} ]]; then
+        shopt -s nullglob
+        output_images=("$output/"*.img.xz)
+        [[ ${#output_images[@]} -eq 1 ]] || { echo 'Expected exactly one output image.' >&2; exit 1; }
+        printf 'image_path=%s\n' "${output_images[0]}" >> "$GITHUB_OUTPUT"
+        if grep -qx 'OS cache reused: 1' "$output/build-info.txt"; then
+            echo 'os_cache_reused=true' >> "$GITHUB_OUTPUT"
+        else
+            echo 'os_cache_reused=false' >> "$GITHUB_OUTPUT"
+        fi
+    fi
     echo "Finished. Flash the .img.xz in: $output"
 else
     echo 'Preflight passed. Run bash pi-gen/build.sh to build the full image.'

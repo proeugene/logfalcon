@@ -457,3 +457,29 @@ physical phone/Pi/Wi-Fi acceptance or sustained large-archive measurements.
 
 Rebuild the SD image and validate the actual pilot collection/download workflow
 on the Pi before release. SD-card partition access has not changed.
+
+
+### Remaining review fixes: 21 October 2026
+
+Corrected updater runtime/inbox access and shared-lock ownership under its
+restricted capability set. The root worker repairs ownership/mode on the held
+file descriptor without replacing the lock inode; symlinks, non-regular files
+and hard-linked updater locks are rejected. Sync now inspects update recovery
+state after acquiring that lock. Skipping optional setup requires the same
+confirmed hostapd recovery as other settings changes. The guide no longer lists
+the already-fixed transfer-size and blackbox-field defects as current defects.
+
+The full macOS Go race/coverage suite passed (sync 70.4%, update 71.7%, web 80.8%),
+as did vet, pinned default golangci-lint (zero issues), native and Linux
+ARM6/ARM64/AMD64 builds. Linux container race tests passed for installer
+integration, update, settings, web and sync. The Linux permission regression
+runs the real installer with the capability set read from its service unit and
+UMask 0077, with a service-owned runtime directory/inbox. Both worker-first and
+service-first startup passed, including exclusive locking, unchanged lock inode,
+subsequent service-account access and cleanup of a service-owned invalid request.
+Additional regressions cover blocked and retryable settings recovery, checking
+update state under the lock, and rejecting unsafe lock files.
+
+These are automated process/filesystem checks. No SD image was rebuilt, no
+systemd-managed appliance update was installed and no Pi/FC/power-loss acceptance
+was performed in this pass. Exact-image physical acceptance remains required.

@@ -66,8 +66,8 @@ journalctl -u 'logfalcon@*' -f</code></pre>
         <h2 class="section-label">Compatibility and current limitations</h2>
         <ul class="guide-list">
           <li><strong>Betaflight / SPI flash:</strong> the main development target. The code rejects MSP API versions older than 1.41. That version check is not a hardware compatibility guarantee.</li>
-          <li><strong>Transfer defects:</strong> large sizes can produce zero-length read requests. Blackbox configuration currently parses the support byte as the storage-device type.</li>
-          <li><strong>iNav:</strong> automatic copying is disabled until the dataflash protocol is validated.</li>
+          <li><strong>Automated transfer checks:</strong> regression tests cover bounded, non-zero read requests and parsing the blackbox storage-device field. Real-controller transfer and decoding still require physical validation.</li>
+          <li><strong>iNav — Experimental; copying currently disabled.</strong></li>
           <li><strong>Unsupported:</strong> controller-side SD card logs and ArduPilot.</li>
           <li><strong>Dashboard:</strong> web and sync services share an atomic runtime status file. Interrupted or unreadable status does not confirm completion.</li>
           <li><strong>Hardware evidence:</strong> Pi builds exist, but physical compatibility, power-loss behaviour and boot/transfer times require recorded tests.</li>

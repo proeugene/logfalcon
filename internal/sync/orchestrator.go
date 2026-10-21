@@ -14,6 +14,7 @@
 package sync
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -57,7 +58,8 @@ type Orchestrator struct {
 	LED    *led.Controller
 	DryRun bool
 	// OpenPort is injectable for wire-level regression tests. Production uses serial.Open.
-	OpenPort func(string, *goSerial.Mode) (goSerial.Port, error)
+	OpenPort        func(string, *goSerial.Mode) (goSerial.Port, error)
+	readUpdateState func(string) ([]byte, error) // defaults to os.ReadFile
 }
 
 // Run opens the serial port and executes the 10-step sync workflow.
@@ -74,6 +76,27 @@ func (o *Orchestrator) Run(portPath string) (result SyncResult) {
 	}
 	defer func() { _ = lock.Close() }()
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN) //nolint:errcheck
+	// Read recovery state while holding the same lock as the updater.
+	readState := o.readUpdateState
+	if readState == nil {
+		readState = os.ReadFile
+	}
+	if b, err := readState("/var/lib/logfalcon-update/state/status.json"); err == nil {
+		var u struct{ Phase string }
+		if json.Unmarshal(b, &u) != nil {
+			slog.Error("update recovery pending; no transfer started")
+			return ResultError
+		}
+		switch u.Phase {
+		case "idle", "validating", "success", "rolled-back", "failed":
+		default:
+			slog.Error("update activation or unreadable recovery state; no transfer started")
+			return ResultError
+		}
+	} else if !os.IsNotExist(err) {
+		slog.Error("update state unreadable")
+		return ResultError
+	}
 	if err := BeginTransfer(portPath); err != nil {
 		slog.Error("cannot start without shared status", "error", err)
 		return
@@ -224,6 +247,12 @@ func (o *Orchestrator) run(portPath string) (SyncResult, error) {
 		return ResultError, nil
 	}
 
+	if o.DryRun || !cfg.EraseAfterSync {
+		if err := storage.RecordRetained(cfg.StoragePath, sessionDir); err != nil {
+			SetStatus("error", 0, "Saved copy exists, but retention outcome could not be recorded.")
+			return ResultError, err
+		}
+	}
 	if o.DryRun {
 		slog.Info("DRY RUN — skipping erase")
 		o.LED.SetState(led.Done)

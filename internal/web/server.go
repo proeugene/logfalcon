@@ -66,15 +66,17 @@ var captivePortalPaths = map[string]struct {
 
 // Server is the LogFalcon HTTP server.
 type Server struct {
-	hotspotPath    string
-	configPath     string
-	restartHotspot func() error
-	storagePath    string
-	config         *config.Config
-	csrfToken      string
-	mux            *http.ServeMux
-	startedAt      time.Time
-	sessionsCache  struct {
+	Version, BuildCommit                                 string
+	updateInbox, updateStateDir, updateKeyDir, updateABI string
+	hotspotPath                                          string
+	configPath                                           string
+	restartHotspot                                       func() error
+	storagePath                                          string
+	config                                               *config.Config
+	csrfToken                                            string
+	mux                                                  *http.ServeMux
+	startedAt                                            time.Time
+	sessionsCache                                        struct {
 		mu   gosync.Mutex
 		data []*storage.Session
 		ts   time.Time
@@ -113,13 +115,22 @@ func NewServer(storagePath string, cfg *config.Config) *Server {
 		},
 	}
 
+	s.configureUpdates()
 	s.mux.HandleFunc("GET /", s.handleIndex)
 	s.mux.HandleFunc("GET /sessions", s.handleSessions)
 	s.mux.HandleFunc("GET /status", s.handleStatus)
 	s.mux.HandleFunc("GET /events", s.handleSSE)
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("GET /download/", s.handleDownload)
+	s.mux.HandleFunc("POST /download-selected", s.handleExport)
 	s.mux.HandleFunc("DELETE /sessions/", s.handleDeleteSession)
+	s.mux.HandleFunc("GET /sessions/fragment", s.handleSessionsFragment)
+	s.mux.HandleFunc("GET /software", s.handleSoftware)
+	s.mux.HandleFunc("POST /software", s.handleSoftwarePost)
+	s.mux.HandleFunc("GET /software/status", s.handleUpdateStatus)
+	s.mux.HandleFunc("GET /recording", s.handleRecordingGet)
+	s.mux.HandleFunc("POST /recording", s.handleRecordingPost)
+	s.mux.HandleFunc("POST /recording/controller", s.handleControllerPost)
 	s.mux.HandleFunc("GET /settings", s.handleSettingsGet)
 	s.mux.HandleFunc("POST /settings", s.handleSettingsPost)
 
@@ -142,6 +153,7 @@ func NewServer(storagePath string, cfg *config.Config) *Server {
 // ListenAndServe starts the HTTP server. It also starts the idle shutdown
 // goroutine when configured.
 func (s *Server) ListenAndServe(addr string) error {
+	s.cleanAbandonedUploads()
 	// systemd may restart only the web process after a crash, so boot-time
 	// recovery alone is insufficient. Finish any pending rollback before serving.
 	if _, err := os.Stat(s.configPath); err == nil {
@@ -159,8 +171,8 @@ func (s *Server) ListenAndServe(addr string) error {
 	srv := &http.Server{
 		Addr:           addr,
 		Handler:        s,
-		ReadTimeout:    15 * time.Second,
-		WriteTimeout:   60 * time.Second,
+		ReadTimeout:    120 * time.Second,
+		WriteTimeout:   180 * time.Second,
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
@@ -169,7 +181,8 @@ func (s *Server) ListenAndServe(addr string) error {
 
 // ServeHTTP records meaningful actions, excluding probes, polling and query strings.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == "/" || r.URL.Path == "/settings" || strings.HasPrefix(r.URL.Path, "/download/") || (r.Method == "DELETE" && strings.HasPrefix(r.URL.Path, "/sessions/")) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.URL.Path == "/" || r.URL.Path == "/settings" || r.URL.Path == "/software" || r.URL.Path == "/download-selected" || strings.HasPrefix(r.URL.Path, "/recording") || strings.HasPrefix(r.URL.Path, "/download/") || (r.Method == "DELETE" && strings.HasPrefix(r.URL.Path, "/sessions/")) {
 		s.lastActivityLock.Lock()
 		s.activeRequests++
 		s.lastActivity = time.Now()
@@ -194,6 +207,8 @@ type actionResponse struct {
 	status int
 	bytes  int
 }
+
+func (w *actionResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *actionResponse) WriteHeader(code int) { w.status = code; w.ResponseWriter.WriteHeader(code) }
 func (w *actionResponse) Write(b []byte) (int, error) {
@@ -234,6 +249,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if cfg, err := config.Load(s.configPath); err == nil && !cfg.SetupCompleted {
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+		return
+	}
 	sessions := s.getSessions()
 
 	var usedGB, freeGB float64
@@ -253,18 +272,23 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	sessionsHTML := RenderSessions(sessions)
 
 	storageWarningHTML := ""
+	if readHostapdConfigAt(s.hotspotPath)["wpa_passphrase"] == defaultHotspotPassword {
+		storageWarningHTML = `<p class="warning-card">Temporary default Wi-Fi password in use. <a href="/settings">Change it in Settings</a>.</p>`
+	}
 	if freeMB < float64(s.config.MinFreeSpaceMB) {
 		cleanupNotice := "Storage cleanup is disabled; free space before another transfer."
 		if s.config.StoragePressureCleanup {
 			cleanupNotice = "Automatic cleanup is enabled: the next transfer may delete your oldest saved sessions."
 		}
-		storageWarningHTML = fmt.Sprintf(
+		storageWarningHTML += fmt.Sprintf(
 			`<div class="warning-card">Low space: %.1f MB free; reserve is %d MB. %s</div>`,
 			freeMB, s.config.MinFreeSpaceMB, cleanupNotice,
 		)
 	}
 
 	body := RenderIndex(IndexParams{
+		Version:            s.Version,
+		DeviceName:         readHostapdConfigAt(s.hotspotPath)["ssid"],
 		UsedGB:             usedGB,
 		FreeGB:             freeGB,
 		Pct:                pct,
@@ -276,6 +300,10 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.sendHTML(w, r, http.StatusOK, body)
 }
 
+func (s *Server) handleSessionsFragment(w http.ResponseWriter, r *http.Request) {
+	s.invalidateSessionsCache()
+	s.sendHTML(w, r, 200, RenderSessions(s.getSessions()))
+}
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := s.getSessions()
 	if sessions == nil {
@@ -287,6 +315,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	status := lfSync.ReadStatus(s.config.StatusPath)
 	payload := map[string]any{
+		"transfer_id":  status.TransferID,
 		"state":        status.State,
 		"message":      status.Message,
 		"progress":     status.Progress,
@@ -362,6 +391,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	payload := map[string]any{
+		"version": s.Version, "commit": s.BuildCommit, "application_ready": storageErr == nil,
 		"ok":         storageErr == nil && status.State != "error" && status.State != "interrupted" && status.State != "unavailable",
 		"uptime_sec": int(time.Since(s.startedAt).Seconds()),
 		"status": map[string]any{
@@ -453,14 +483,15 @@ func (s *Server) handleSettingsGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSettingsPost(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 8192)
 	if err := r.ParseForm(); err != nil {
 		s.sendHTML(w, r, http.StatusBadRequest, s.renderSettingsPage("Invalid form data.", true))
 		return
 	}
 
 	csrfToken := r.FormValue("csrf_token")
-	ssid := strings.TrimSpace(r.FormValue("ssid"))
-	password := strings.TrimSpace(r.FormValue("password"))
+	ssid := r.FormValue("ssid")
+	password := r.FormValue("password")
 
 	if csrfToken != s.csrfToken {
 		s.sendHTML(w, r, http.StatusForbidden,
@@ -468,17 +499,26 @@ func (s *Server) handleSettingsPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.FormValue("skip") == "1" {
+		m := settings.Manager{Hostapd: s.hotspotPath, Config: s.configPath, Restart: s.restartHotspot}
+		if err := m.Apply(settings.Values{SetupCompleted: true}); err != nil {
+			s.sendError(w, r, 500, "Could not save setup choice.")
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
 	if err := validateHotspotValue(ssid, 1, 32, "SSID"); err != "" {
 		s.sendHTML(w, r, http.StatusBadRequest, s.renderSettingsPage(err, true))
 		return
 	}
-	if err := validateHotspotValue(password, 8, 63, "Password"); err != "" {
+	if err := validateHotspotValue(password, 8, 63, "Password"); password != "" && err != "" {
 		s.sendHTML(w, r, http.StatusBadRequest, s.renderSettingsPage(err, true))
 		return
 	}
 
 	m := settings.Manager{Hostapd: s.hotspotPath, Config: s.configPath, Restart: s.restartHotspot}
-	if err := m.Apply(settings.Values{SSID: ssid, Password: password}); err != nil {
+	if err := m.Apply(settings.Values{SSID: ssid, Password: password, Country: r.FormValue("country"), SetupCompleted: true}); err != nil {
 		slog.Warn("settings transaction failed", "error", err)
 		s.sendHTML(w, r, http.StatusInternalServerError, s.renderSettingsPage("Settings could not be applied. Recovery will be retried before another change; check diagnostics.", true))
 		return
@@ -495,10 +535,6 @@ func (s *Server) renderSettingsPage(message string, isError bool) string {
 	currentSSID := hostapd["ssid"]
 	if currentSSID == "" {
 		currentSSID = "Unknown"
-	}
-	currentPass := hostapd["wpa_passphrase"]
-	if currentPass == "" {
-		currentPass = "Unknown"
 	}
 
 	msgHTML := ""
@@ -517,9 +553,16 @@ func (s *Server) renderSettingsPage(message string, isError bool) string {
 			`Change it before flying at a shared field.</div>`
 	}
 
+	setup := false
+	if cfg, err := config.Load(s.configPath); err == nil {
+		setup = !cfg.SetupCompleted
+	}
 	return RenderSettings(SettingsParams{
+		Version:     s.Version,
+		Setup:       setup,
 		CurrentSSID: currentSSID,
-		CurrentPass: currentPass,
+		Country:     hostapd["country_code"],
+		CurrentPass: "",
 		MsgHTML:     msgHTML,
 		WarningHTML: warningHTML,
 		CSRFToken:   s.csrfToken,
@@ -610,12 +653,12 @@ func readHostapdConfigAt(path string) map[string]string {
 	}
 	result := map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
+		line = strings.TrimSuffix(line, "\r")
 		if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
 			continue
 		}
 		k, v, _ := strings.Cut(line, "=")
-		result[strings.TrimSpace(k)] = strings.TrimSpace(v)
+		result[strings.TrimSpace(k)] = v
 	}
 	return result
 }

@@ -1,7 +1,9 @@
 package web
 
 import (
+	"errors"
 	"github.com/proeugene/logfalcon/internal/config"
+	"github.com/proeugene/logfalcon/internal/settings"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -12,6 +14,7 @@ import (
 
 func TestOptionalSetupAndLiteralPassword(t *testing.T) {
 	s, _ := newTestServer(t)
+	s.restartHotspot = func() error { return nil }
 	dir := t.TempDir()
 	s.configPath = filepath.Join(dir, "logfalcon.toml")
 	s.hotspotPath = filepath.Join(dir, "hostapd.conf")
@@ -80,5 +83,51 @@ func TestCompletedRefreshContract(t *testing.T) {
 	s.ServeHTTP(w, httptest.NewRequest("GET", "/sessions/fragment", nil))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), "No saved recordings") {
 		t.Fatal("fragment unavailable")
+	}
+}
+
+// Skipping setup is still a settings transaction: pending recovery must restart
+// hostapd successfully before the journal can be cleared or setup marked done.
+func TestSkipRequiresSuccessfulRecovery(t *testing.T) {
+	s, _ := newTestServer(t)
+	dir := t.TempDir()
+	s.configPath = filepath.Join(dir, "logfalcon.toml")
+	s.hotspotPath = filepath.Join(dir, "hostapd.conf")
+	for path, data := range map[string]string{
+		s.configPath:  "hotspot_ssid = \"Original\"\nhotspot_password = \"safe-test-password\"\n",
+		s.hotspotPath: "ssid=Original\nwpa_passphrase=safe-test-password\ncountry_code=GB\n",
+	} {
+		if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := settings.Manager{Config: s.configPath, Hostapd: s.hotspotPath, Restart: func() error { return errors.New("restart failed") }}
+	if err := m.Apply(settings.Values{SSID: "Changed"}); err == nil {
+		t.Fatal("expected pending recovery")
+	}
+	journal := filepath.Join(dir, "settings-undo.json")
+	restarts := 0
+	s.restartHotspot = func() error { restarts++; return errors.New("still failing") }
+	form := url.Values{"csrf_token": {s.csrfToken}, "skip": {"1"}}
+	if w := annotationRequest(s, "/settings", form); w.Code != 500 {
+		t.Fatalf("skip bypassed recovery: %d", w.Code)
+	}
+	if _, err := os.Stat(journal); err != nil || restarts == 0 {
+		t.Fatalf("recovery not retained/restarted: %v, restarts=%d", err, restarts)
+	}
+	cfg, err := config.Load(s.configPath)
+	if err != nil || cfg.SetupCompleted {
+		t.Fatal("failed recovery marked setup complete")
+	}
+	s.restartHotspot = func() error { restarts++; return nil }
+	if w := annotationRequest(s, "/settings", form); w.Code != 303 {
+		t.Fatalf("retry failed: %d", w.Code)
+	}
+	if _, err := os.Stat(journal); !os.IsNotExist(err) {
+		t.Fatal("successful recovery retained journal")
+	}
+	cfg, err = config.Load(s.configPath)
+	if err != nil || !cfg.SetupCompleted || cfg.HotspotSSID != "Original" || cfg.HotspotPassword != "safe-test-password" {
+		t.Fatal("retry did not preserve credentials and complete setup")
 	}
 }

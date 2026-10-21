@@ -4,6 +4,7 @@ package settings
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,6 +23,8 @@ import (
 
 type Values struct {
 	SSID, Password, Country, Debug string // empty means preserve
+	SetupCompleted                 bool
+	DeviceIdentity                 string
 }
 
 type Manager struct {
@@ -234,6 +237,12 @@ func (m Manager) apply(v Values, hash string) error {
 		}
 		app["debug_logging"] = v.Debug
 	}
+	if v.SetupCompleted {
+		app["setup_completed"] = "true"
+	}
+	if v.DeviceIdentity != "" {
+		app["device_identity"] = strconv.Quote(v.DeviceIdentity)
+	}
 	nextH, nextC := Rewrite(h.Data, host, false), Rewrite(c.Data, app, true)
 	cfg := config.Default()
 	if err = toml.NewDecoder(bytes.NewReader(nextC)).DisallowUnknownFields().Decode(cfg); err != nil {
@@ -363,4 +372,38 @@ func Rewrite(b []byte, values map[string]string, spaced bool) []byte {
 		lines = append(lines, k+sep+remaining[k])
 	}
 	return []byte(strings.Join(lines, "\n") + "\n")
+}
+
+// InitialiseDevice is called only with a fresh-install marker. Upgrades never
+// create this marker, so an existing installation is never renamed.
+func (m Manager) InitialiseDevice() error {
+	return m.locked(func() error {
+		marker := m.path("identity.pending")
+		if _, err := os.Stat(marker); errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		cfg, err := config.Load(m.Config)
+		if err != nil {
+			return err
+		}
+		if cfg.DeviceIdentity == "" {
+			id := make([]byte, 6)
+			if _, err := rand.Read(id); err != nil {
+				return err
+			}
+			v := Values{DeviceIdentity: strings.ToUpper(hex.EncodeToString(id))}
+			if cfg.HotspotSSID == "LogFalcon" {
+				v.SSID = "LogFalcon-" + v.DeviceIdentity
+			}
+			if err := m.apply(v, ""); err != nil {
+				return err
+			}
+		}
+		if err := os.Remove(marker); err != nil {
+			return err
+		}
+		return syncDir(filepath.Dir(m.Config))
+	})
 }

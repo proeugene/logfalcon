@@ -14,14 +14,18 @@ LogFalcon is an open-source Go appliance for copying flight-controller blackbox 
 **Experimental. Reliability fixes have automated regression tests; physical image, Wi-Fi and controller acceptance remain outstanding. Older release images may lack these changes.**
 
 - **Betaflight / SPI flash:** primary workflow; transfer sizes and storage-device parsing have regression tests, with hardware validation still required.
-- **iNav:** automatic copying is disabled pending validation of its dataflash protocol.
+- **iNav — Experimental; copying currently disabled.**
 - **FC-side SD cards and ArduPilot:** not supported.
 - **Pi Zero W / Zero 2 W:** build targets exist; this checkout does not establish physical compatibility, boot time or transfer speed.
-- **Dashboard:** reads boot-scoped shared transfer status and lists completed saved sessions.
+- **Dashboard:** reads boot-scoped transfer status and lists saved recordings. Each flash copy may contain several flights; displayed times identify collection, not flight time.
+- **Batch download:** select recordings and choose **Download selected** for one ZIP with `.bbl` files, manifests, notes and controller names. Up to 100 recordings per ZIP; controller/session folders keep files distinct.
+- **Pilot context:** use **Edit details** on a recording to add optional notes or a controller nickname. Save each section separately. Blank fields restore the unlabelled display. Annotations do not change the recording or transfer manifest; collection does not require them.
 
 The code hashes received bytes and compares them with a reread of the saved file. This checks saved-copy consistency, not an independent checksum supplied by the controller or the validity of the blackbox log.
 
 **Automatic controller erasure and storage cleanup default to off.** Keep `erase_after_sync = false` and `storage_pressure_cleanup = false` during evaluation. Invalid configuration prevents copying. Upgrades retain existing configuration, including previously enabled destructive settings. Use `--dry-run` for manual testing to skip erasure.
+
+Signed offline application updates are available through **Software update** in this candidate. See [upgrade support, bootstrap and signing setup](docs/OFFLINE_UPDATES.md). Production signing must be provisioned before a release; no universal historical-image compatibility is claimed.
 
 ## What you need
 
@@ -36,9 +40,9 @@ The code hashes received bytes and compares them with a reread of the saved file
 1. Review the limitations above, then download a Raspberry Pi image from [Releases](https://github.com/proeugene/logfalcon/releases). Choose a candidate whose release notes identify these safety fixes; verify its image against `checksums.txt`. Do not assume an older image matches this checkout.
 2. Flash it with Raspberry Pi Imager or Etcher. Set your country and optionally change the hotspot settings in `logfalcon-config.txt` on the boot partition.
 3. Power the Pi through **PWR IN**. Before connecting a controller, disable automatic erasure and storage cleanup in the configuration. See the [setup guide](https://proeugene.github.io/logfalcon/guide.html#setup).
-4. Connect to the `LogFalcon` Wi-Fi hotspot and open **http://log.falcon** or **http://192.168.4.1**. The default Wi-Fi password is `fpvpilot`; change it before shared use.
+4. Connect to the unique `LogFalcon-XXXXXXXXXXXX` Wi-Fi hotspot (existing/custom names are preserved) and open **http://log.falcon** or **http://192.168.4.1**. The temporary default Wi-Fi password is `fpvpilot`. Optional first-use setup lets you change the name, password and country or choose “Skip for now”. “No internet” is expected; automatic copying works without setup or a phone.
 5. Connect the controller through the Pi's **USB / OTG data port**. Keep it connected until the dashboard records completion. Confirm dashboard, service log and LED behaviour during hardware acceptance.
-6. Refresh the dashboard, download the `.bbl`, and check that it opens in Blackbox Explorer. Keep the original controller data during evaluation.
+6. Wait for the saved-log list to update automatically, download the `.bbl`, and check that it opens in Blackbox Explorer. Keep the original controller data during evaluation.
 
 ## Engineering and development
 

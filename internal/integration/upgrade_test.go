@@ -31,15 +31,15 @@ func TestUpgradePreservesOperatorSettings(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	writeFixture(t, filepath.Join(project, "bin/logfalcon-amd64"), "fixture binary")
+	writeFixture(t, filepath.Join(project, "bin/logfalcon-amd64"), "#!/bin/sh\nexit 0\n")
 	script, err := os.ReadFile("../../install.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := strings.ReplaceAll(string(script), "if [[ $EUID -ne 0 ]]; then", "if false; then")
-	s = strings.NewReplacer("$SCRIPT_DIR/boot/", "$SCRIPT_DIR/boot/", "/etc/", root+"/etc/", "/opt/", root+"/opt/", "/mnt/", root+"/mnt/", "/boot/", root+"/boot/", "/var/", root+"/var/").Replace(s)
+	s = strings.NewReplacer("$SCRIPT_DIR/boot/", "$SCRIPT_DIR/boot/", "/etc/", root+"/etc/", "/opt/", root+"/opt/", "/mnt/", root+"/mnt/", "/boot/", root+"/boot/", "/var/", root+"/var/", "/run/", root+"/run/", "/usr/share/logfalcon/", root+"/usr/share/logfalcon/").Replace(s)
 	writeFixture(t, filepath.Join(project, "install.sh"), s)
-	for _, command := range []string{"apt-get", "rfkill", "id", "usermod", "useradd", "systemctl", "udevadm", "chown"} {
+	for _, command := range []string{"apt-get", "rfkill", "id", "usermod", "useradd", "systemctl", "udevadm", "chown", "flock"} {
 		writeFixture(t, filepath.Join(bin, command), "#!/bin/sh\nexit 0\n")
 	}
 	writeFixture(t, filepath.Join(bin, "uname"), "#!/bin/sh\necho x86_64\n")
@@ -53,6 +53,7 @@ func TestUpgradePreservesOperatorSettings(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeFixture(t, root+"/opt/logfalcon/logfalcon", "#!/bin/sh\nexit 0\n")
 	writeFixture(t, root+"/etc/default/hostapd", "#DAEMON_CONF=\n")
 	writeFixture(t, root+"/etc/avahi/avahi-daemon.conf", "#host-name=\n")
 	files := map[string]string{

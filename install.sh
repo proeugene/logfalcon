@@ -27,7 +27,6 @@ HOTSPOT_IP="192.168.4.1"
 HOTSPOT_DHCP_START="192.168.4.2"
 HOTSPOT_DHCP_END="192.168.4.20"
 PASSWORD_SET_BY_ARG=0
-GENERATED_PASSWORD=0
 
 ### --- Parse arguments --- ###
 while [[ $# -gt 0 ]]; do
@@ -65,6 +64,7 @@ if [[ -f "$CONFIG_DIR/logfalcon.toml" || -f "$CONFIG_DIR/hostapd.conf" || -f /et
 fi
 # Detect architecture and copy appropriate binary
 ARCH=$(uname -m)
+if [[ "$(getconf LONG_BIT)" == 32 && "$ARCH" == aarch64 ]]; then ARCH=armv7l; fi
 case "$ARCH" in
   armv6l|armv7l)  BINARY_SUFFIX="arm6" ;;
   aarch64) BINARY_SUFFIX="arm64" ;;
@@ -83,7 +83,7 @@ if [[ ! -f "$BINARY_SRC" ]]; then
 fi
 
 # Required source assets must exist before changing the machine.
-for asset in logfalcon@.service logfalcon-web.service logfalcon-config-apply.service \
+for asset in logfalcon-update.service logfalcon-update.path logfalcon@.service logfalcon-web.service logfalcon-config-apply.service \
   logfalcon-wifi-init.service logfalcon-ready-led.service logfalcon-boot-led.service \
   logfalcon-runtime.service logfalcon-diagnostics.service logfalcon-diagnostics-export.service \
   logfalcon-diagnostics-export.timer logfalcon-shutdown.service 50-logfalcon.rules \
@@ -92,7 +92,20 @@ for asset in logfalcon@.service logfalcon-web.service logfalcon-config-apply.ser
 done
 [[ -f "$SCRIPT_DIR/config/logfalcon.toml" && -f "$SCRIPT_DIR/boot/logfalcon-config.txt" ]] || { echo "Missing configuration templates; no system changes made." >&2; exit 1; }
 
+# Validate existing values before any machine change. Bootstrap is limited to
+# complete Go/TOML installations; legacy Python layouts require manual recovery.
+if [[ $UPGRADING -eq 1 ]]; then
+ [[ -x "$INSTALL_DIR/logfalcon" ]] || { echo "Legacy runtime has no recoverable Go binary; use the documented migration/recovery route." >&2; exit 1; }
+  "$BINARY_SRC" --check-upgrade-config --config "$CONFIG_DIR/logfalcon.toml"
+  mkdir -p /run/logfalcon
+  exec 9>/run/logfalcon/transfer.lock
+  chown bbsyncer:bbsyncer /run/logfalcon/transfer.lock
+  [[ ! -e /run/logfalcon/shutdown.pending ]] || { echo "Shutdown pending; retry after boot." >&2; exit 1; }
+  flock -n 9 || { echo "Copy or shutdown is active; retry bootstrap when idle." >&2; exit 1; }
+fi
+
 ### --- 1. System packages --- ###
+
 echo "[1/8] Installing system packages..."
 apt-get update -q
 apt-get install -y \
@@ -102,13 +115,6 @@ apt-get install -y \
 # Unblock Wi-Fi
 rfkill unblock wlan
 
-if [[ $PASSWORD_SET_BY_ARG -eq 0 && $UPGRADING -eq 0 ]]; then
-  WIFI_PASSWORD="$(head -c 9 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
-  if [[ -z "$WIFI_PASSWORD" ]]; then
-    WIFI_PASSWORD="LogFalcon$(date +%s | tail -c 5)"
-  fi
-  GENERATED_PASSWORD=1
-fi
 
 ### --- 2. System user --- ###
 echo "[2/8] Creating bbsyncer system user (legacy name kept for compatibility)..."
@@ -288,6 +294,23 @@ install -m 755 "$SCRIPT_DIR/system/logfalcon-boot-led.sh" "$INSTALL_DIR/boot-led
 # Ready LED script
 install -m 755 "$SCRIPT_DIR/system/logfalcon-ready-led.sh" "$INSTALL_DIR/ready-led.sh"
 
+if [[ $UPGRADING -eq 0 ]]; then touch "$CONFIG_DIR/identity.pending"; fi
+
+# Offline updater: isolated inbox, root-owned journal, executable and trust store.
+install -m 755 "$INSTALL_DIR/logfalcon" "$INSTALL_DIR/updater"
+install -d -m 755 /var/lib/logfalcon-update /var/lib/logfalcon-update/state /usr/share/logfalcon/update-keys
+install -d -m 770 /var/lib/logfalcon-update/inbox
+chown bbsyncer:bbsyncer /var/lib/logfalcon-update/inbox
+install -m 644 "$SCRIPT_DIR/system/logfalcon-update.service" "$SCRIPT_DIR/system/logfalcon-update.path" /etc/systemd/system/
+if [[ -d "$SCRIPT_DIR/update-keys" ]]; then
+  for key in "$SCRIPT_DIR"/update-keys/*.pub; do
+    [[ -f "$key" ]] && install -m 644 "$key" /usr/share/logfalcon/update-keys/
+  done
+fi
+systemctl daemon-reload
+systemctl enable logfalcon-update.service logfalcon-update.path
+systemctl start logfalcon-update.path
+
 # Config-apply script (boot-time SSID/password applicator)
 cp "$SCRIPT_DIR/system/config-apply.sh" "$INSTALL_DIR/config-apply.sh"
 chmod +x "$INSTALL_DIR/config-apply.sh"
@@ -339,11 +362,6 @@ echo ""
 echo "Wi-Fi hotspot: $SSID (password stored in the boot configuration)"
 echo "Web interface: http://$HOTSPOT_IP  or  http://logfalcon.local"
 echo ""
-if [[ $GENERATED_PASSWORD -eq 1 ]]; then
-  echo "A unique hotspot password was generated for this install."
-  echo "Keep it somewhere safe before you leave for the field."
-  echo ""
-fi
 echo "The status LED reports copy outcomes; confirm Wi-Fi in your phone before use."
 echo "To sync logs: plug a Betaflight SPI-flash FC into the Pi's USB OTG port."
 echo "To view logs: connect to the '$SSID' Wi-Fi network."

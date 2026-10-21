@@ -46,3 +46,11 @@ Maintainer settings still needed (read-only inspection, 20 October 2026): main
 branch protection/required checks or rulesets; Dependabot alerts/security updates;
 private vulnerability reporting. Secret scanning and push protection were enabled
 and no open secret alerts were returned. Settings were inspected, not changed.
+
+Offline updates additionally require all three signed .lfu files, trusted public
+keys/key list, and the updater service/path from the same release commit.
+Provision signing and test the rotation/direct-upgrade route as described in
+[OFFLINE_UPDATES.md](docs/OFFLINE_UPDATES.md). Missing signing configuration is a
+release failure. Check the exact uploaded package on the spare card, including
+failed health/rollback and reboot recovery. Do not configure secrets or publish
+from an untrusted PR. No signing secrets were created or configured by this task.

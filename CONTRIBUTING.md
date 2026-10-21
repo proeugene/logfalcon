@@ -70,3 +70,11 @@ Image inspection and cross-compilation do not establish hardware reliability.
 Use [DEVELOPMENT_TESTING.md](DEVELOPMENT_TESTING.md) for physical acceptance and
 [AI-assisted development](docs/AI_ASSISTED_DEVELOPMENT.md) for how assistance is
 recorded without inventing human review or validation.
+
+Signed-update tests use isolated temporary Ed25519 keys and a small cross-compiled
+Go executable to exercise real ELF/build identity checks. Historical migration
+fixtures are original tag configurations, with their limits in
+[OFFLINE_UPDATES.md](docs/OFFLINE_UPDATES.md). Run all package tests on Linux CI;
+a macOS fixture is not native Linux installer evidence. Keep format/migrations
+and cumulative trust delegations compatible with appliances that skip releases.
+Never put production private signing material in this checkout or a test fixture.

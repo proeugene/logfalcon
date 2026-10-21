@@ -16,7 +16,7 @@ type FCInfo struct {
 	Variant         string // "BTFL" or "INAV"
 	UID             string // hex string
 	BlackboxDevice  int
-	Warning         string // non-empty when firmware is newer than max tested
+	Warning         string // non-empty when firmware is newer than protocol-reviewed
 }
 
 // DetectionError indicates a generic MSP identification failure.
@@ -67,7 +67,7 @@ type MSPClient interface {
 //  3. GetFCVersion  — human-readable firmware version string (best effort)
 //  4. CheckVersion  — VersionTooOldError = hard stop; VersionTooNewError = warning
 //  5. GetUID        — use "unknown" on error
-//  6. GetBlackboxConfig — BTFL queries MSP; INAV skips (assumes flash)
+//  6. GetBlackboxConfig — BTFL queries MSP; iNav is rejected before this step
 //  7. SDCard device → SDCardError
 func Detect(client MSPClient) (*FCInfo, error) {
 	// 1. API version
@@ -93,7 +93,7 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	// Its current DATAFLASH_SUMMARY wire layout has not been validated here.
 	// Do not guess storage state, particularly when automatic erase is enabled.
 	if variant == msp.INAVVariant {
-		return nil, &DetectionError{Message: "iNav automatic copying is disabled pending dataflash protocol validation"}
+		return nil, &DetectionError{Message: "iNav — Experimental; copying currently disabled"}
 	}
 
 	// 3. Firmware version string (best effort — some older FC builds don't support this)
@@ -113,7 +113,7 @@ func Detect(client MSPClient) (*FCInfo, error) {
 			return nil, verr
 		case *VersionTooNewError:
 			warning = verr.Error()
-			slog.Warn("FC firmware newer than tested", "warning", warning)
+			slog.Warn("FC firmware newer than protocol-reviewed", "warning", warning)
 		}
 	}
 
@@ -126,22 +126,12 @@ func Detect(client MSPClient) (*FCInfo, error) {
 		slog.Warn("could not read FC UID, using 'unknown'")
 	}
 
-	// 6. Blackbox config
-	var bbDevice int
-	if variant == msp.BTFLVariant {
-		deviceType, err := client.GetBlackboxConfig()
-		if err != nil {
-			return nil, &DetectionError{Message: "Cannot establish the configured blackbox storage device"}
-		} else {
-			bbDevice = deviceType
-			slog.Info("blackbox device type", "device", bbDevice)
-		}
-	} else {
-		// iNav deprecated MSP_BLACKBOX_CONFIG — assume flash until
-		// DATAFLASH_SUMMARY proves otherwise.
-		bbDevice = msp.BlackboxDeviceFlash
-		slog.Info("non-Betaflight FC — skipping BLACKBOX_CONFIG, assuming flash")
+	// 6. Betaflight blackbox configuration. iNav was rejected above.
+	bbDevice, err := client.GetBlackboxConfig()
+	if err != nil {
+		return nil, &DetectionError{Message: "Cannot establish the configured blackbox storage device"}
 	}
+	slog.Info("blackbox device type", "device", bbDevice)
 
 	// 7. SD card → error
 	if bbDevice == msp.BlackboxDeviceSDCard {

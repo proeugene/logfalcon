@@ -267,7 +267,7 @@ done || true
 # ─────────────────────────────────────────────────────────────────────────────
 hdr "logfalcon services"
 
-for svc in logfalcon-web.service logfalcon@.service logfalcon-config-apply.service; do
+for svc in logfalcon-web.service logfalcon@.service logfalcon-config-apply.service logfalcon-update.service logfalcon-update.path; do
   SVC=""
   for p in /mnt/root/etc/systemd/system/"$svc" \
             /mnt/root/lib/systemd/system/"$svc"; do
@@ -369,7 +369,9 @@ fi
 
 for svc in /mnt/root/etc/systemd/system/logfalcon-web.service \
            /mnt/root/etc/systemd/system/logfalcon@.service \
-           /mnt/root/etc/systemd/system/logfalcon-config-apply.service; do
+           /mnt/root/etc/systemd/system/logfalcon-config-apply.service \
+           /mnt/root/etc/systemd/system/logfalcon-update.service \
+           /mnt/root/etc/systemd/system/logfalcon-update.path; do
   if ! [ -f "$svc" ]; then
     err "CRITICAL: $(basename "$svc") missing"
     ISSUES=$((ISSUES+1))
@@ -381,7 +383,16 @@ if ! systemctl --root=/mnt/root is-enabled logfalcon-web.service &>/dev/null; th
   ISSUES=$((ISSUES+1))
 fi
 
+if ! [ -x /mnt/root/opt/logfalcon/updater ] || ! [ -f /mnt/root/etc/logfalcon/identity.pending ]; then
+  err "CRITICAL: offline updater or first-device identity marker missing"
+  ISSUES=$((ISSUES+1))
+fi
+if grep -Eq '^device_identity[[:space:]]*=' /mnt/root/etc/logfalcon/logfalcon.toml; then
+  err "CRITICAL: shared image contains a generated device identity"
+  ISSUES=$((ISSUES+1))
+fi
 if [ $ISSUES -eq 0 ]; then
+
   echo -e "${GRN}  No obvious config issues found.${NC}"
 else
   echo -e "${YEL}  Found $ISSUES issue(s) — see above.${NC}"

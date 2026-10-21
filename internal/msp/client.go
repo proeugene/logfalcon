@@ -180,7 +180,7 @@ func (c *Client) GetFCVariant() (string, error) {
 }
 
 // GetFCVersion returns the firmware version string (e.g. "4.5.0").
-// The payload is three bytes: [major, minor, patch].
+// Older replies contain three bytes; modern replies append a bounded PString.
 func (c *Client) GetFCVersion() (string, error) {
 	f, err := c.Request(MSPFCVersion, nil)
 	if err != nil {
@@ -189,7 +189,31 @@ func (c *Client) GetFCVersion() (string, error) {
 	if len(f.Payload) < 3 {
 		return "", fmt.Errorf("MSP_FC_VERSION payload too short (%d bytes)", len(f.Payload))
 	}
-	return fmt.Sprintf("%d.%d.%d", f.Payload[0], f.Payload[1], f.Payload[2]), nil
+	return parseFCVersion(f.Payload)
+}
+
+func parseFCVersion(payload []byte) (string, error) {
+	if len(payload) < 3 {
+		return "", fmt.Errorf("MSP_FC_VERSION payload too short")
+	}
+	if len(payload) > 3 {
+		n := int(payload[3])
+		if n == 0 || n > 64 || len(payload) != 4+n {
+			return "", fmt.Errorf("invalid MSP_FC_VERSION string length")
+		}
+		for _, b := range payload[4:] {
+			if b < 33 || b > 126 {
+				return "", fmt.Errorf("invalid MSP_FC_VERSION string")
+			}
+		}
+		return string(payload[4:]), nil
+	}
+	major := int(payload[0])
+	// Calendar versions encode years since 2000. Legacy major versions are < 20.
+	if major >= 20 {
+		major += 2000
+	}
+	return fmt.Sprintf("%d.%d.%d", major, payload[1], payload[2]), nil
 }
 
 // GetUID returns the 12-byte board UID as a hex string.

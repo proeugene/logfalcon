@@ -1,0 +1,7 @@
+[Unit]
+Description=Watch for an offline LogFalcon update request
+[Path]
+PathExists=/var/lib/logfalcon-update/inbox/request
+Unit=logfalcon-update.service
+[Install]
+WantedBy=multi-user.target

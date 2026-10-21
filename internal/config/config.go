@@ -42,6 +42,8 @@ type Config struct {
 
 	// Web server
 	WebPort         int    `toml:"web_port"`
+	SetupCompleted  bool   `toml:"setup_completed"`
+	DeviceIdentity  string `toml:"device_identity"`
 	HotspotSSID     string `toml:"hotspot_ssid"`
 	HotspotPassword string `toml:"hotspot_password"`
 

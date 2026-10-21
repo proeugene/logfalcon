@@ -43,3 +43,25 @@ func TestPinnedBetaflightFixtures(t *testing.T) {
 		t.Fatal("compression request reached serial port")
 	}
 }
+
+// Independently authored field values for Betaflight 2026.6.2 e0b7bb01...;
+// fixed response frames never use the production encoder.
+func TestBetaflight2026Fixtures(t *testing.T) {
+	if got, err := fixtureClient(t, "bf2026_version").GetFCVersion(); err != nil || got != "2026.6.2" {
+		t.Fatalf("version=%q err=%v", got, err)
+	}
+	if major, minor, err := fixtureClient(t, "bf2026_api").GetAPIVersion(); err != nil || major != 1 || minor != 48 {
+		t.Fatalf("api=%d.%d err=%v", major, minor, err)
+	}
+	if device, err := fixtureClient(t, "bf2026_blackbox").GetBlackboxConfig(); err != nil || device != BlackboxDeviceFlash {
+		t.Fatalf("device=%d err=%v", device, err)
+	}
+	s, err := fixtureClient(t, "bf2026_summary").GetDataflashSummary()
+	if err != nil || !s.Ready || !s.Supported || s.TotalSize != 8388608 || s.UsedSize != 65540 {
+		t.Fatalf("summary=%+v err=%v", s, err)
+	}
+	address, data, err := fixtureClient(t, "bf2026_plain").ReceiveFlashReadResponse()
+	if err != nil || address != 65536 || string(data) != "BF26" {
+		t.Fatalf("address=%d data=%q err=%v", address, data, err)
+	}
+}

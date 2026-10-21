@@ -298,3 +298,162 @@ The additional temporary-download-options regression case was added after the
 build snapshot and passed locally; it changes no application/image code.
 Next: flash this exact artifact and carry out physical acceptance above.
 Boot, Wi-Fi, USB/controller copying and power-cycle behaviour remain untested.
+
+## Onboarding/dashboard/offline update candidate, 21 October 2026
+
+Based on the clean test branch at 66b21ff, with the local implementation diff.
+No commit, push, release, secret setup or physical acceptance is implied.
+
+Implemented: first-installed-device identity (never generated in the shared
+image), optional setup/skip persistence through settings transactions, literal
+password handling, country and reconnect warnings, automatic completed-session
+insertion, explicit retained/erase outcomes, version/update UI, signed complete
+release packages, cumulative key delegation, fixed privileged updater with
+durable rollback, release package CI and the documented bootstrap boundary.
+Betaflight 2026.6.2/API 1.48 has tagged-source and synthetic-fixture coverage.
+iNav — Experimental; copying currently disabled.
+
+Automatic evidence in this session:
+
+- Go 1.27.3 race/coverage suite and vet passed on macOS.
+- Pinned golangci-lint 2.15.0 (built with Go 1.27.3) passed using defaults.
+- Twenty-second decoder fuzzing with two workers passed, approximately 2.01
+  million executions.
+- ShellCheck passed for both installers, settings/Wi-Fi scripts, image inspection
+  and the changed image installation script. release.yml passed actionlint.
+- Native and Linux ARM6, ARM64 and AMD64 application builds passed. Host builds
+  used a temporary GOCACHE and -buildvcs=false because the sandbox cannot write
+  Go's normal cache; these are compilation checks, not signed release artifacts.
+- All three ABI package-builder/verification commands also passed with an isolated all-zero test seed in a temporary directory. These smoke artifacts use an artificial version and a dirty checkout, so they are not release artifacts.
+- Temporary-file/isolated-key tests cover signature/hash tampering, wrong
+  architecture and executable identity, unsafe/duplicate/symlink archives,
+  upload/expanded limits, key delegation without an intermediate package,
+  insufficient space, copy-lock contention, interrupted activation, failed
+  startup/restart, rollback, actual-tag config fixtures and incomplete config.
+- HTTP upload/review/queue tests use an isolated signed ELF fixture and exercise invalid files, stale CSRF, changed-review rejection, queued-state reporting and safe abandoned-upload cleanup.
+- HTTP handler/template checks cover setup/skip persistence, existing-name
+  prefill, no current-password rendering, blank/literal passwords, stale CSRF
+  guidance and the completed-list refresh contract. These do not execute a real
+  mobile browser or simulate a Wi-Fi reconnection.
+- A pre-existing storage test compared a UTC-created session date with the
+  local date around midnight; its expectation now uses UTC.
+
+Blocked/unverified: govulncheck 1.9.0 built with Go 1.27.3 could not reach
+vuln.go.dev (DNS/network restriction), so there is no actionable current scan.
+Native Linux installer integration/image build was not run: Docker socket
+access is denied in this session. macOS installer fixtures passed separately.
+The local browser preview was attempted, but the sandbox forbade its listening
+socket and automatic approval review could not run because of an account usage
+limit. No rendered phone-size browser, physical phone/Wi-Fi, FC, image boot,
+systemd activation or physical rollback result is claimed.
+
+### Next external acceptance: exact spare card and one pilot
+
+1. Provision signing as documented in docs/OFFLINE_UPDATES.md. Complete the
+   blocked vulnerability scan and native Linux CI, then build one exact image
+   and ABI-specific package from one recorded commit. Record SHA-256 for both.
+2. Flash a spare card; leave erase and cleanup disabled. Boot two fresh cards
+   independently: confirm different SSIDs, correct temporary password, no internet
+   expected, setup offered and Skip persists. Copy a real FC without a phone.
+3. On a real small phone, change name/password/country; observe the warning and
+   disconnection, rejoin and confirm effective settings. Reboot and upgrade:
+   verify identity, credentials, country, debug and all app values are retained.
+   Exercise blank-password preservation and boot-file recovery after a bad edit.
+4. Copy a real Betaflight controller (record board and full firmware version).
+   Confirm waiting/copying/checking/completed states, live new-log insertion
+   without closing an existing details/download action, retained-data label and
+   successful Blackbox Explorer opening. Record interruptions separately.
+5. Upload the exact signed package, review version/ABI, install, reconnect and
+   require version/commit/healthy confirmation. Attempt during copying: verify
+   activation waits and no new copy starts during activation. Reject a corrupted,
+   wrong-ABI, unsigned and older package before activation.
+6. On the disposable spare card, exercise failed new-app startup and controlled
+   interruption during activation. Reboot and confirm previous application
+   restoration, retryable recovery and unchanged config/logs. Capture bounded
+   diagnostics; retain a separate known-good card throughout.
+7. For each supported historical-image row, bootstrap and direct-jump to the
+   latest package without an intermediate release. Original config fixtures
+   alone do not accept that row physically; record the exact old image/layout.
+8. Ask one independent pilot to attempt setup, a real copy/download and an
+   offline update. Record confusion/failure before another internal polish cycle.
+
+### Dashboard redesign: 21 October 2026
+
+Implemented a shared offline visual shell for dashboard, Settings, update upload,
+update review and request errors. Transfer stages use the published status;
+missing/unknown status does not imply readiness or completion. Compatibility
+warnings remain visible. Session retention/erase badges come from manifest facts.
+
+Local checks after the redesign: `go test -race -cover ./...`, `go vet ./...`,
+and pinned golangci-lint passed (web coverage 79.1%; lint reported zero issues).
+Regression checks include status/HTML escaping, compatibility warnings, bounded
+progress, newest available download selection and preservation of the session
+cache order. Existing settings and signed-update handler tests passed.
+
+Browser checks used a separate localhost:8086 render harness with clearly labelled
+sample sessions and simulated transfer states. Desktop and 390px phone viewports
+were inspected; dashboard, Settings and Software update had no horizontal
+page overflow at 390px. Waiting/copying/completed displays, the Wi-Fi review
+modal, and refresh preserving an expanded session were checked. No browser
+warnings/errors were reported during these checks. No credentials were changed
+and no update was installed in this preview. The temporary harness is not shipped.
+
+This is local browser evidence, not physical phone, captive portal, Wi-Fi restart,
+controller or installation acceptance. The previously built image predates this
+redesign. Rebuild the exact candidate image, then test on the Pi and a real phone
+before treating these screens as appliance-validated.
+
+### Pilot recording context: 21 October 2026
+
+Added optional recording titles (120 characters), notes (2,000 characters), and
+controller nicknames (80 characters). Notes are session sidecars; nicknames are
+stored in the existing controller UID directory. Neither edits transfer evidence
+nor gates automatic collection. The UI distinguishes collection time from flight
+time and explains overlapping flash copies and the separate Betaflight Viewer
+workflow. Each editor section saves separately and warns about unsaved edits.
+
+After this change, the full Go race/coverage suite, vet and pinned default lint
+passed (web 79.6%, storage 63.9%; lint zero issues). Tests cover save/reopen/clear,
+shared nicknames, old recordings without annotations, escaping, bounded input,
+stale CSRF, path traversal, symlinks, corrupt/oversized metadata, failed saves,
+and preservation of `.bbl` and manifest bytes.
+
+A localhost:8087 preview used the actual HTTP handlers and disposable sample
+recordings (not decodable flight logs). Browser checks saved/reopened titles and
+multiline notes, saved a nickname visible on both sample recordings, and retained
+annotations across a preview process restart. Desktop and 390px phone layouts
+were inspected; dashboard/editor had no horizontal overflow. The unsaved-other-
+section confirmation was triggered. No browser warnings/errors were reported.
+No real controller, installed appliance, Wi-Fi change or software update was used.
+
+The existing SD image still predates these changes. Next acceptance remains a
+rebuilt exact image on the Pi, followed by one pilot collecting, naming, finding
+and downloading a real recording for analysis.
+
+### Multi-select ZIP and simpler UI: 21 October 2026
+
+Added selected recording export (maximum 100 per ZIP), including `.bbl`, manifest,
+notes and controller-name metadata with controller/session paths. Selection is
+preserved on refresh; new rows stay unselected and removed rows disappear.
+Removed promotional headings/taglines, decorative status artwork, the duplicate
+latest-copy card and repeated explanations. Dashboard, editor, Settings and
+Software update now share a quieter layout; guidance remains in collapsed help.
+
+Full Go race/coverage tests passed (web 80.5%); subsequent final web changes also
+passed `go test -race ./internal/web`. Vet, pinned default lint and native build
+passed; lint reported zero issues. Export tests cover multiple sessions, duplicate
+selection, source bytes, notes/nicknames, invalid counts/CSRF/paths, missing files,
+symlinks, corrupt notes, manifest size mismatch and aborted response writes.
+
+The actual localhost:8088 handlers downloaded a ZIP containing both disposable
+sample recordings. `unzip -t` checked all seven entries successfully. Browser
+checks covered select-all, partial selection, preserving selection/expanded
+details on refresh, new unselected rows, removed rows and visible export errors
+when a selected file was temporarily unavailable. The fixture was restored.
+Dashboard, editor, Settings and Software update were inspected at 390px width;
+no horizontal overflow was observed. No JavaScript warnings/errors were reported
+during the normal flow. These are local sample-data checks, not real log decoding,
+physical phone/Pi/Wi-Fi acceptance or sustained large-archive measurements.
+
+Rebuild the SD image and validate the actual pilot collection/download workflow
+on the Pi before release. SD-card partition access has not changed.

@@ -45,7 +45,7 @@ func TestMakeSessionDir(t *testing.T) {
 	}
 
 	// Session directory: YYYY-MM-DD_HHMMSS
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().UTC().Format("2006-01-02")
 	if !strings.HasPrefix(parts[1], today) {
 		t.Errorf("session dir = %q, want prefix %s", parts[1], today)
 	}

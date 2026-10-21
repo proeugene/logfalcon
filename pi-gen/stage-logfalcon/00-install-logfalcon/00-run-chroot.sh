@@ -97,4 +97,20 @@ ln -sf /dev/null /etc/systemd/system/ModemManager.service
 # (No action needed here — just let it run.)
 
 # Cleanup
+
+
+# Identity is generated on the installed device, never in the shared image.
+touch /etc/logfalcon/identity.pending
+
+install -m 755 /opt/logfalcon/logfalcon /opt/logfalcon/updater
+install -d -m 755 /var/lib/logfalcon-update /var/lib/logfalcon-update/state /usr/share/logfalcon/update-keys
+install -d -m 770 -o bbsyncer -g bbsyncer /var/lib/logfalcon-update/inbox
+install -m 644 "$REPO_DIR/system/logfalcon-update.service" "$REPO_DIR/system/logfalcon-update.path" /etc/systemd/system/
+if [ -d "$REPO_DIR/update-keys" ]; then
+ for key in "$REPO_DIR"/update-keys/*.pub; do
+  [ -f "$key" ] && install -m 644 "$key" /usr/share/logfalcon/update-keys/
+ done
+fi
+systemctl enable logfalcon-update.service logfalcon-update.path
+
 rm -rf "$REPO_DIR"

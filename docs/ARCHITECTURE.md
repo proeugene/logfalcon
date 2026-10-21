@@ -57,6 +57,21 @@ tokens guard mutations, but do not authenticate a pilot. Use a private password;
 do not expose port 80 to another network. The image's administration account also
 has a documented initial password and must be changed before shared use.
 
+Pilot titles/notes are optional `pilot-notes.json` sidecars within each saved
+session. Controller nicknames live in `pilot-controller.json` within the existing
+controller UID directory and apply to its recordings. They do not change the
+controller, Wi-Fi, `.bbl` or manifest. Annotation reads/writes use storage-rooted
+handles, bounded text and atomic publication. Missing files mean unlabelled;
+unreadable files are preserved and editing is blocked until storage is repaired.
+Connected clients can read/edit these annotations too. Session deletion also
+deletes its notes; controller nicknames remain for subsequent copies.
+
+The dashboard's timestamps identify collection time, not flight time. A flash
+copy may contain several flights; retained controller data may appear in later
+copies. Notes are pilot observations. No flight splitting, decoding or automatic
+diagnosis is performed; downloads can be opened separately in Betaflight App's
+Blackbox Viewer.
+
 Downloads, session deletion and copy publication use directory handles anchored
 within storage (`os.Root`), rather than path-string prefix checks. Symlinked
 sessions/files are rejected; rooted operations constrain path changes during
@@ -91,3 +106,46 @@ journals, so a successful Go build is not an appliance acceptance test.
 See [AI-assisted development](AI_ASSISTED_DEVELOPMENT.md),
 [compatibility evidence](FC_COMPATIBILITY_ANALYSIS.md) and
 [release gates](../RELEASE_CHECKLIST.md).
+
+## Device setup and signed offline update
+
+A fresh-install-only identity.pending marker makes the boot configuration
+transaction generate and persist a random device identity and unique default SSID
+on the installed appliance. The shared image contains no generated identity.
+Explicit names and all upgraded installations are preserved. Optional setup/skip
+is stored through the existing settings lock and undo journal, with a modest
+default-password reminder. Passwords remain literal and are never rendered back
+to the browser. Reconnection and the effective settings page confirm application.
+
+The dashboard polls shared status and fetches a saved-session fragment once per
+new completed transfer. New cards are inserted without replacing existing
+controls/details/download anchors. Manifests explicitly record data retention
+when erase was skipped; older manifests without that outcome remain unconfirmed.
+Saved-file consistency remains distinct from a controller checksum.
+
+The additional privileged process is the fixed logfalcon-update.service, driven
+by logfalcon-update.path and enabled at boot for recovery. It re-verifies signed
+complete payloads, excludes transfer/shutdown, journals asset backups, activates
+atomically per file, checks the new application identity/health and restores the
+previous assets after failure/interruption. The recovery executable stays old
+until health confirmation. It never rewrites application/Wi-Fi configuration.
+The web process remains unprivileged; no new login/guest model is introduced.
+See [format, trust rotation and historical support](OFFLINE_UPDATES.md).
+
+## Selected recording export
+
+The dashboard submits up to 100 selected session identifiers to the CSRF-protected
+`POST /download-selected` route. The server validates manifests, file availability
+and lengths, and annotation readability before starting a ZIP. It holds rooted
+file handles and streams original `.bbl` bytes, original manifests, annotation
+snapshots and controller names under controller/session directories. Duplicate
+selections are removed; user titles do not become archive paths. Missing optional
+annotations export as empty metadata. No source files or erase settings change.
+
+ZIPs use stored entries to avoid compression work on the Pi. They are streamed
+without an archive-sized memory buffer or temporary ZIP. Active exports count as
+activity for idle shutdown. A write/read failure aborts the response without
+finalising a misleadingly complete archive. Long downloads renew the write
+deadline, while stalled connections still time out. HTTP disconnects and disk
+failures remain reasons to retry; browser download completion is not inferred
+from requesting an export.

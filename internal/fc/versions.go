@@ -2,7 +2,7 @@ package fc
 
 import "fmt"
 
-// versionBound describes the minimum (hard block) and maximum tested (soft warn)
+// versionBound describes the minimum (hard block) and maximum protocol-reviewed (soft warn)
 // MSP API version for a given FC variant.
 type versionBound struct {
 	MinMajor int
@@ -17,10 +17,9 @@ type versionBound struct {
 // format to include an explicit dataSize + compressionType header.  Firmware
 // older than 4.0 uses a different wire format that would corrupt log data.
 //
-// iNav: the DATAFLASH_READ format is simpler (no compression header), so older
-// versions are safe back to roughly iNav 2.6 (API 1.40).
+// iNav remains experimental and copying is disabled before transfer.
 var variantVersions = map[string]versionBound{
-	"BTFL": {MinMajor: 1, MinMinor: 41, MaxMajor: 1, MaxMinor: 47},
+	"BTFL": {MinMajor: 1, MinMinor: 41, MaxMajor: 1, MaxMinor: 48},
 	"INAV": {MinMajor: 1, MinMinor: 40, MaxMajor: 1, MaxMinor: 46},
 }
 
@@ -49,7 +48,7 @@ func (e *VersionTooOldError) Error() string {
 }
 
 // VersionTooNewError is returned when the FC firmware is newer than the highest
-// version tested.  Syncing is allowed to proceed but the user is warned.
+// protocol-reviewed API.  Syncing is allowed to proceed but the user is warned.
 type VersionTooNewError struct {
 	Variant         string
 	FirmwareVersion string // human-readable, e.g. "4.7.0" (empty if unknown)
@@ -65,16 +64,16 @@ func (e *VersionTooNewError) Error() string {
 		fw = fmt.Sprintf(" (%s)", e.FirmwareVersion)
 	}
 	return fmt.Sprintf(
-		"%s%s uses MSP API %d.%d which is newer than tested (max tested: API %d.%d). "+
+		"%s%s uses MSP API %d.%d which is newer than protocol-reviewed (highest reviewed: API %d.%d). "+
 			"Sync will proceed — if anything looks wrong, please report your firmware version.",
 		name, fw, e.Major, e.Minor, e.MaxMajor, e.MaxMinor,
 	)
 }
 
 // CheckVersion returns:
-//   - nil              if the version is within the known-good range
+//   - nil              if the version is within the protocol-reviewed range
 //   - *VersionTooOldError  if the version is below the minimum (hard stop)
-//   - *VersionTooNewError  if the version is above max tested (soft warning)
+//   - *VersionTooNewError  if the version is above max protocol-reviewed (soft warning)
 //
 // An unknown variant is treated as in-range (variant validation is handled
 // separately in Detect).

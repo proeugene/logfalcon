@@ -87,12 +87,32 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
         run: |
-          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then VERSION="$GITHUB_REF_NAME"; else VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev"); fi
           COMMIT=$(git rev-parse HEAD)
           CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=${VERSION} -X main.BuildCommit=${COMMIT}" \
             -o logfalcon-${{ matrix.suffix }} ./cmd/logfalcon
 
+      - name: Build and verify signed offline update
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          UPDATE_SIGNING_SEED: ${{ secrets.UPDATE_SIGNING_SEED }}
+          UPDATE_SIGNING_KEY_ID: ${{ vars.UPDATE_SIGNING_KEY_ID }}
+        run: |
+          test -n "$UPDATE_SIGNING_SEED" || { echo "::error::UPDATE_SIGNING_SEED is required"; exit 1; }
+          test -n "$UPDATE_SIGNING_KEY_ID" || { echo "::error::UPDATE_SIGNING_KEY_ID is required"; exit 1; }
+          go run ./cmd/update-package -binary logfalcon-${{ matrix.suffix }} -version "$GITHUB_REF_NAME" -commit "$GITHUB_SHA" -arch ${{ matrix.suffix }} -key-id "$UPDATE_SIGNING_KEY_ID" -out "logfalcon-$GITHUB_REF_NAME-${{ matrix.suffix }}.lfu"
+          go run ./cmd/update-package -verify "logfalcon-$GITHUB_REF_NAME-${{ matrix.suffix }}.lfu" -arch ${{ matrix.suffix }}
+
+      - name: Upload signed update
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: logfalcon-update-${{ matrix.suffix }}
+          path: logfalcon-*.lfu
+          if-no-files-found: error
+
       - name: Binary size gate
+
         run: |
           BINARY="logfalcon-${{ matrix.suffix }}"
           SIZE_BYTES=$(stat -c%s "$BINARY")
@@ -135,8 +155,8 @@ jobs:
 
       - name: Cross-compile logfalcon for ARM
         run: |
-          make build-pi
-          make build-pi2
+          make VERSION="$GITHUB_REF_NAME" build-pi
+          make VERSION="$GITHUB_REF_NAME" build-pi2
           cp bin/logfalcon-arm6 bin/logfalcon
           ls -la bin/
 
@@ -229,9 +249,11 @@ jobs:
             echo "| Final .img.xz | $FINAL_SIZE |"
           } >> "$GITHUB_STEP_SUMMARY"
 
+          PUBLISHED_IMAGE="logfalcon-${GITHUB_REF_NAME//\//-}-arm6.img.xz"
+          mv "${IMAGE_FILE}.xz" "$PUBLISHED_IMAGE"
           {
-            echo "IMAGE_FILE=$IMAGE_FILE"
-            echo "IMAGE_PATH=pi-gen/pi-gen-repo/deploy/${IMAGE_FILE}.xz"
+            echo "IMAGE_FILE=$PUBLISHED_IMAGE"
+            echo "IMAGE_PATH=pi-gen/pi-gen-repo/deploy/$PUBLISHED_IMAGE"
           } >> "$GITHUB_ENV"
 
       - name: Inspect exact image
@@ -265,7 +287,10 @@ jobs:
         run: |
           mkdir -p release-assets
           find artifacts -type f -name 'logfalcon-*' -exec cp {} release-assets/ \;
-          cp system/*.service system/*.timer system/*.sh system/*.rules system/journald.conf release-assets/
+          cp system/*.service system/*.path system/*.timer system/*.sh system/*.rules system/journald.conf release-assets/
+          test -n "$(find update-keys -name '*.pub' -print -quit)" || { echo '::error::No trusted update public keys'; exit 1; }
+          for key in update-keys/*.pub; do cp "$key" "release-assets/update-key-$(basename "$key")"; done
+          (cd release-assets && printf '%s\n' update-key-*.pub > update-keys.txt)
           cp config/logfalcon.toml release-assets/logfalcon-default.toml
           cp boot/logfalcon-config.txt release-assets/logfalcon-boot-config.txt
           printf '%s\n%s\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" > release-assets/logfalcon-build.txt
@@ -291,6 +316,7 @@ jobs:
               exit 1
             fi
           done
+          for arch in arm6 arm64 amd64; do test -f "logfalcon-$GITHUB_REF_NAME-$arch.lfu" || { echo "::error::Missing signed update $arch"; exit 1; }; done
           if [ -z "$(find . -maxdepth 1 -type f -name 'logfalcon-*.img.xz')" ]; then
             echo "::error::Missing required release asset: logfalcon-*.img.xz"
             exit 1

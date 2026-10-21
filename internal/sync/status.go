@@ -31,7 +31,7 @@ type Status struct {
 	FCVariant         string `json:"fc_variant"`          // e.g. "BTFL" or "INAV"
 	FCFirmwareVersion string `json:"fc_firmware_version"` // e.g. "4.5.0"
 	FCAPIVersion      string `json:"fc_api_version"`      // e.g. "1.46"
-	// Warning is non-empty when firmware is newer than max tested.
+	// Warning is non-empty when firmware is newer than protocol-reviewed.
 	// The sync proceeds but the user is shown an amber notice.
 	Warning string `json:"warning,omitempty"`
 }

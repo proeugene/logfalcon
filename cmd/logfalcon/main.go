@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/proeugene/logfalcon/internal/led"
 	"github.com/proeugene/logfalcon/internal/settings"
 	lfsync "github.com/proeugene/logfalcon/internal/sync"
+	"github.com/proeugene/logfalcon/internal/update"
 	"github.com/proeugene/logfalcon/internal/web"
 	"os/exec"
 )
@@ -35,6 +37,8 @@ func main() {
 		diagnosticAction string
 		ledStatus        bool
 		applyBoot        bool
+		checkUpgrade     bool
+		updateWorker     bool
 	)
 
 	flag.BoolVar(&webMode, "web", false, "Run in web server mode")
@@ -45,7 +49,31 @@ func main() {
 	flag.StringVar(&diagnosticAction, "diagnostics", "", "Diagnostics action: start, export, stop")
 	flag.BoolVar(&ledStatus, "led-status", false, "Drive the Pi LED from shared transfer status")
 	flag.BoolVar(&applyBoot, "apply-boot-config", false, "Recover settings and apply boot configuration")
+	flag.BoolVar(&updateWorker, "update-worker", false, "Run privileged signed update activation and recovery")
+	flag.BoolVar(&checkUpgrade, "check-upgrade-config", false, "Validate existing configuration before bootstrap; no changes")
 	flag.Parse()
+	if checkUpgrade {
+		app := configPath
+		if app == "" {
+			app = "/etc/logfalcon/logfalcon.toml"
+		}
+		host := filepath.Join(filepath.Dir(app), "hostapd.conf")
+		if _, err := os.Stat(host); os.IsNotExist(err) {
+			host = "/etc/hostapd/hostapd.conf"
+		}
+		if err := update.CheckConfiguration(app, host); err != nil {
+			slog.Error("upgrade configuration rejected", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if updateWorker {
+		if err := update.System(Version).Run(); err != nil {
+			slog.Error("update failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if showVersion {
 		fmt.Printf("logfalcon %s (%s)\n", Version, BuildCommit)
@@ -64,6 +92,10 @@ func main() {
 		}}
 		if err := m.ApplyBoot(bootFile); err != nil {
 			slog.Error("boot settings failed", "error", err)
+			os.Exit(1)
+		}
+		if err := m.InitialiseDevice(); err != nil {
+			slog.Error("device identity failed", "error", err)
 			os.Exit(1)
 		}
 		return
@@ -129,6 +161,8 @@ func main() {
 	if webMode {
 		slog.Info("starting web server", "port", cfg.WebPort, "version", Version)
 		srv := web.NewServer(cfg.StoragePath, cfg)
+		srv.Version = Version
+		srv.BuildCommit = BuildCommit
 		addr := fmt.Sprintf("0.0.0.0:%d", cfg.WebPort)
 		if err := srv.ListenAndServe(addr); err != nil {
 			slog.Error("web server failed", "error", err)

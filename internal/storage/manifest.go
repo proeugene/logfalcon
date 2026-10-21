@@ -31,13 +31,14 @@ type FCInfo struct {
 
 // Manifest describes a single download session persisted as manifest.json.
 type Manifest struct {
-	Version        int                `json:"version"`
-	CreatedUTC     string             `json:"created_utc"`
-	FC             ManifestFC         `json:"fc"`
-	File           ManifestFile       `json:"file"`
-	EraseAttempted bool               `json:"erase_attempted"`
-	EraseCompleted bool               `json:"erase_completed"`
-	Timing         map[string]float64 `json:"timing,omitempty"`
+	Version                int                `json:"version"`
+	CreatedUTC             string             `json:"created_utc"`
+	FC                     ManifestFC         `json:"fc"`
+	File                   ManifestFile       `json:"file"`
+	ControllerDataRetained bool               `json:"controller_data_retained,omitempty"`
+	EraseAttempted         bool               `json:"erase_attempted"`
+	EraseCompleted         bool               `json:"erase_completed"`
+	Timing                 map[string]float64 `json:"timing,omitempty"`
 }
 
 // ManifestFC holds flight-controller metadata inside a manifest.
@@ -57,12 +58,15 @@ type ManifestFile struct {
 
 // Session represents a single download session discovered on disk.
 type Session struct {
-	SessionID  string    `json:"session_id"`
-	FCDir      string    `json:"fc_dir"`
-	SessionDir string    `json:"session_dir"`
-	Path       string    `json:"path"`
-	BBLPath    *string   `json:"bbl_path"`
-	Manifest   *Manifest `json:"manifest"`
+	SessionID             string              `json:"session_id"`
+	FCDir                 string              `json:"fc_dir"`
+	SessionDir            string              `json:"session_dir"`
+	Path                  string              `json:"path"`
+	BBLPath               *string             `json:"bbl_path"`
+	Manifest              *Manifest           `json:"manifest"`
+	Annotation            RecordingAnnotation `json:"annotation"`
+	Nickname              string              `json:"nickname,omitempty"`
+	AnnotationUnavailable bool                `json:"annotation_unavailable,omitempty"`
 }
 
 // atomicJSONWrite writes data as indented JSON to a temporary file,
@@ -203,6 +207,7 @@ func UpdateManifestErase(storagePath, dir string, eraseCompleted bool, timing ma
 	if err := json.Unmarshal(data, &m); err != nil {
 		return fmt.Errorf("decode manifest: %w", err)
 	}
+	m.ControllerDataRetained = false
 	m.EraseAttempted = true
 	m.EraseCompleted = eraseCompleted
 	if timing != nil {
@@ -259,13 +264,25 @@ func ListSessions(root string) ([]*Session, error) {
 				}
 				_ = f.Close()
 			}
+			id := fmt.Sprintf("%s/%s", fcDirName, sessDirName)
+			notes, notesErr := ReadRecordingAnnotation(root, id)
+			controller, controllerErr := ReadControllerAnnotation(root, id)
+			if notesErr != nil {
+				notes = RecordingAnnotation{}
+			}
+			if controllerErr != nil {
+				controller = ControllerAnnotation{}
+			}
 			sessions = append(sessions, &Session{
-				SessionID:  fmt.Sprintf("%s/%s", fcDirName, sessDirName),
-				FCDir:      fcDirName,
-				SessionDir: sessDirName,
-				Path:       sessDirPath,
-				BBLPath:    bblPtr,
-				Manifest:   &m,
+				Annotation:            notes,
+				Nickname:              controller.Nickname,
+				AnnotationUnavailable: notesErr != nil || controllerErr != nil,
+				SessionID:             fmt.Sprintf("%s/%s", fcDirName, sessDirName),
+				FCDir:                 fcDirName,
+				SessionDir:            sessDirName,
+				Path:                  sessDirPath,
+				BBLPath:               bblPtr,
+				Manifest:              &m,
 			})
 		}
 	}
@@ -339,4 +356,27 @@ func CleanupOldestSessions(root string, requiredFreeBytes int64) ([]string, erro
 		deleted = append(deleted, c.sessionID)
 	}
 	return deleted, nil
+}
+
+// RecordRetained records an explicit non-destructive outcome. Old manifests
+// without this field remain "No erase recorded", rather than implying proof.
+func RecordRetained(storagePath, dir string) error {
+	session, err := openSessionPath(storagePath, dir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = session.Close() }()
+	data, err := session.ReadFile(ManifestFilename)
+	if err != nil {
+		return err
+	}
+	var m Manifest
+	if err = json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	if m.EraseAttempted || m.EraseCompleted {
+		return fmt.Errorf("cannot record retention after an erase attempt")
+	}
+	m.ControllerDataRetained = true
+	return atomicJSONWrite(session, ManifestFilename, m)
 }

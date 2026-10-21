@@ -30,6 +30,7 @@ command -v systemctl >/dev/null 2>&1 || die "systemd is required."
 
 # --- Detect architecture -----------------------------------------------------
 ARCH=$(uname -m)
+if [[ "$(getconf LONG_BIT)" == 32 && "$ARCH" == aarch64 ]]; then ARCH=armv7l; fi
 case "$ARCH" in
     armv6l)          SUFFIX="arm6"  ;;
     armv7l)          SUFFIX="arm6"  ;;  # ARMv6 binary runs on v7
@@ -61,16 +62,21 @@ fetch_asset() {
         wget -qO "$ASSET_DIR/$1" "$ASSET_BASE/$1"
     fi
 }
-for asset in logfalcon@.service logfalcon-web.service logfalcon-config-apply.service \
+for asset in logfalcon-update.service logfalcon-update.path logfalcon@.service logfalcon-web.service logfalcon-config-apply.service \
     logfalcon-wifi-init.service logfalcon-boot-led.service logfalcon-ready-led.service \
     logfalcon-runtime.service logfalcon-diagnostics.service logfalcon-diagnostics-export.service \
     logfalcon-diagnostics-export.timer config-apply.sh wifi-init.sh logfalcon-boot-led.sh \
     99-betaflight-fc.rules journald.conf 50-logfalcon.rules logfalcon-shutdown.service \
-    logfalcon-default.toml logfalcon-boot-config.txt logfalcon-build.txt checksums.txt; do
+    logfalcon-default.toml logfalcon-boot-config.txt logfalcon-build.txt update-keys.txt checksums.txt; do
     fetch_asset "$asset" || die "Release $VERSION lacks required integration assets; no system changes made. Choose a complete candidate release."
 done
 
-# --- Download binary ---------------------------------------------------------
+while IFS= read -r key; do
+ [[ "$key" =~ ^update-key-[A-Za-z0-9_-]+\.pub$ ]] || die "Unsafe update key name."
+ fetch_asset "$key" || die "Trusted update key missing."
+done < "$ASSET_DIR/update-keys.txt"
+
+# --- Download binary
 BINARY_URL="https://github.com/$REPO/releases/download/$VERSION/logfalcon-$SUFFIX"
 BINARY_TMP="$ASSET_DIR/logfalcon-$SUFFIX"
 
@@ -109,7 +115,16 @@ if [[ -f "$CONFIG_DIR/logfalcon.toml" || -f "$CONFIG_DIR/hostapd.conf" || -f /et
         exit 1
     fi
 fi
-# --- Install packages --------------------------------------------------------
+if [[ $UPGRADING -eq 1 ]]; then
+ [[ -x "$INSTALL_DIR/logfalcon" ]] || { echo "Legacy runtime has no recoverable Go binary; use the documented migration/recovery route." >&2; exit 1; }
+ "$BINARY_TMP" --check-upgrade-config --config "$CONFIG_DIR/logfalcon.toml"
+ mkdir -p /run/logfalcon
+ exec 9>/run/logfalcon/transfer.lock
+ chown bbsyncer:bbsyncer /run/logfalcon/transfer.lock
+ [[ ! -e /run/logfalcon/shutdown.pending ]] || die "Shutdown pending; retry after boot."
+ flock -n 9 || die "Copy or shutdown is active; retry bootstrap when idle."
+fi
+# --- Install packages
 info "Installing required packages..."
 apt-get update -qq
 apt-get install -y -qq hostapd dnsmasq avahi-daemon rfkill polkitd iw >/dev/null 2>&1
@@ -144,6 +159,24 @@ if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]]; then
 else
     info "Config already exists at $CONFIG_DIR/logfalcon.toml — keeping it."
 fi
+
+if [[ $UPGRADING -eq 0 ]]; then touch "$CONFIG_DIR/identity.pending"; fi
+
+# Offline updater: isolated inbox, root-owned journal, executable and trust store.
+install -m 755 "$INSTALL_DIR/logfalcon" "$INSTALL_DIR/updater"
+install -d -m 755 /var/lib/logfalcon-update /var/lib/logfalcon-update/state /usr/share/logfalcon/update-keys
+install -d -m 770 /var/lib/logfalcon-update/inbox
+chown bbsyncer:bbsyncer /var/lib/logfalcon-update/inbox
+install -m 644 "$ASSET_DIR/logfalcon-update.service" "$ASSET_DIR/logfalcon-update.path" /etc/systemd/system/
+# Public trust keys must be distributed as authenticated release assets.
+for key in "$ASSET_DIR"/update-key-*.pub; do
+  [[ -f "$key" ]] || continue
+  name="${key##*/}"; name="${name#update-key-}"
+  install -m 644 "$key" "/usr/share/logfalcon/update-keys/$name"
+done
+systemctl daemon-reload
+systemctl enable logfalcon-update.service logfalcon-update.path
+systemctl start logfalcon-update.path
 
 # --- Install boot config (first-boot SSID/password) -------------------------
 BOOT_DIR=""

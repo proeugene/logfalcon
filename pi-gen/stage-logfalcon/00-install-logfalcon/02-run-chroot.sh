@@ -3,30 +3,25 @@
 
 HOTSPOT_IP="192.168.4.1"
 
-# Static IP on wlan0 via dhcpcd (standard RPi OS Bookworm networking)
-if [ -f /etc/dhcpcd.conf ]; then
-    cat >> /etc/dhcpcd.conf <<EOF
-
-# LogFalcon hotspot static IP
-interface wlan0
-static ip_address=${HOTSPOT_IP}/24
-nohook wpa_supplicant
-EOF
-else
-    # Fallback: systemd-networkd for non-dhcpcd images
-    mkdir -p /etc/systemd/network
-    cat > /etc/systemd/network/10-wlan0-static.network <<EOF
+# Configure the AP even before carrier appears; retain its address on Wi-Fi restart.
+systemctl mask dhcpcd.service 2>/dev/null || true
+mkdir -p /etc/systemd/network
+cat > /etc/systemd/network/10-wlan0-static.network <<'NETEOF'
 [Match]
 Name=wlan0
 
 [Network]
-Address=${HOTSPOT_IP}/24
-EOF
-    systemctl enable systemd-networkd 2>/dev/null || true
-fi
+Address=192.168.4.1/24
+ConfigureWithoutCarrier=yes
+IgnoreCarrierLoss=yes
+DHCP=no
+IPv6AcceptRA=no
+NETEOF
+systemctl enable systemd-networkd
 
 # hostapd config (defaults — overridden by config-apply from logfalcon-config.txt)
-cat > /etc/hostapd/hostapd.conf <<EOF
+if [[ ! -f /etc/logfalcon/hostapd.conf ]]; then
+cat > /etc/logfalcon/hostapd.conf <<EOF
 interface=wlan0
 driver=nl80211
 ssid=LogFalcon
@@ -42,12 +37,15 @@ rsn_pairwise=CCMP
 beacon_int=100
 dtim_period=2
 max_num_sta=8
-country_code=US
+country_code=GB
 ieee80211d=1
 EOF
+fi
 
 # Allow bbsyncer (web server) to rewrite hostapd.conf for settings save
-chown bbsyncer:bbsyncer /etc/hostapd/hostapd.conf
+chown bbsyncer:bbsyncer /etc/logfalcon/hostapd.conf
+chmod 600 /etc/logfalcon/hostapd.conf
+ln -sfn ../logfalcon/hostapd.conf /etc/hostapd/hostapd.conf
 
 # Enable hostapd config
 sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd 2>/dev/null || true
@@ -66,6 +64,7 @@ interface=wlan0
 bind-interfaces
 dhcp-range=192.168.4.2,192.168.4.20,24h
 dhcp-option=option:router,${HOTSPOT_IP}
+log-dhcp
 # Explicit alias — http://log.falcon opens the dashboard from any browser
 address=/log.falcon/${HOTSPOT_IP}
 # Wildcard catch-all — any other URL also resolves to the Pi
@@ -80,8 +79,8 @@ grep -q "^no-resolv" /etc/dnsmasq.conf 2>/dev/null || echo "no-resolv" >> /etc/d
 mkdir -p /etc/systemd/system/dnsmasq.service.d
 cat > /etc/systemd/system/dnsmasq.service.d/wait-for-wlan0.conf <<EOF
 [Unit]
-After=sys-subsystem-net-devices-wlan0.device network-online.target logfalcon-wifi-init.service
-Requires=sys-subsystem-net-devices-wlan0.device
+After=sys-subsystem-net-devices-wlan0.device systemd-networkd.service logfalcon-wifi-init.service
+Requires=sys-subsystem-net-devices-wlan0.device systemd-networkd.service logfalcon-wifi-init.service
 [Service]
 Restart=on-failure
 RestartSec=3
@@ -92,7 +91,7 @@ mkdir -p /etc/systemd/system/hostapd.service.d
 cat > /etc/systemd/system/hostapd.service.d/wait-for-wlan0.conf <<EOF
 [Unit]
 After=sys-subsystem-net-devices-wlan0.device logfalcon-wifi-init.service
-Requires=sys-subsystem-net-devices-wlan0.device
+Requires=sys-subsystem-net-devices-wlan0.device systemd-networkd.service logfalcon-wifi-init.service
 [Service]
 Restart=on-failure
 RestartSec=3
@@ -113,15 +112,15 @@ sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/
 # up from the file even with wpa_supplicant disabled.
 mkdir -p /etc/wpa_supplicant
 cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
-country=US
+country=GB
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 EOF
 
 # crda fallback
 if [ -f /etc/default/crda ]; then
-    sed -i 's/^REGDOMAIN=.*/REGDOMAIN=US/' /etc/default/crda
-    grep -q "^REGDOMAIN=" /etc/default/crda || echo "REGDOMAIN=US" >> /etc/default/crda
+    sed -i 's/^REGDOMAIN=.*/REGDOMAIN=GB/' /etc/default/crda
+    grep -q "^REGDOMAIN=" /etc/default/crda || echo "REGDOMAIN=GB" >> /etc/default/crda
 fi
 
 systemctl enable logfalcon-wifi-init.service

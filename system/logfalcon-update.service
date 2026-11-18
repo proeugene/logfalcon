@@ -1,0 +1,24 @@
+[Unit]
+Description=LogFalcon signed offline update and recovery
+StartLimitIntervalSec=0
+After=local-fs.target logfalcon-runtime.service logfalcon-web.service
+Wants=logfalcon-runtime.service
+[Service]
+Type=oneshot
+ExecStart=/opt/logfalcon/updater --update-worker
+TimeoutStartSec=180
+Restart=on-failure
+RestartSec=5
+UMask=0077
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/logfalcon /etc/systemd/system /etc/polkit-1/rules.d /etc/udev/rules.d /etc/systemd/journald.conf.d /usr/share/logfalcon /var/lib/logfalcon-update /run/logfalcon
+# Access the bbsyncer-owned runtime/inbox and preserve ownership of the shared lock.
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN CAP_FOWNER
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+NoNewPrivileges=true
+[Install]
+WantedBy=multi-user.target

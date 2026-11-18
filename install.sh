@@ -27,7 +27,6 @@ HOTSPOT_IP="192.168.4.1"
 HOTSPOT_DHCP_START="192.168.4.2"
 HOTSPOT_DHCP_END="192.168.4.20"
 PASSWORD_SET_BY_ARG=0
-GENERATED_PASSWORD=0
 
 ### --- Parse arguments --- ###
 while [[ $# -gt 0 ]]; do
@@ -51,41 +50,23 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-### --- 1. System packages --- ###
-echo "[1/8] Installing system packages..."
-apt-get update -q
-apt-get install -y \
-  hostapd dnsmasq avahi-daemon \
-  rfkill polkitd iw
-
-# Unblock Wi-Fi
-rfkill unblock wlan
-
-if [[ $PASSWORD_SET_BY_ARG -eq 0 ]]; then
-  WIFI_PASSWORD="$(head -c 9 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
-  if [[ -z "$WIFI_PASSWORD" ]]; then
-    WIFI_PASSWORD="LogFalcon$(date +%s | tail -c 5)"
-  fi
-  GENERATED_PASSWORD=1
+# Establish upgrade state before generating or writing any defaults.
+UPGRADING=0
+if [[ -f "$CONFIG_DIR/logfalcon.toml" || -f "$CONFIG_DIR/hostapd.conf" || -f /etc/hostapd/hostapd.conf ]]; then
+    UPGRADING=1
+    if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]] || [[ ! -f "$CONFIG_DIR/hostapd.conf" && ! -f /etc/hostapd/hostapd.conf ]]; then
+        echo "Incomplete existing configuration. Restore the application/hotspot files before upgrading; no defaults applied." >&2
+        exit 1
+    fi
+    if [[ $PASSWORD_SET_BY_ARG -eq 1 || "$SSID" != LogFalcon ]]; then
+        echo "Upgrade preserves settings. Edit the boot config to change credentials." >&2; exit 1
+    fi
 fi
-
-### --- 2. System user --- ###
-echo "[2/8] Creating bbsyncer system user (legacy name kept for compatibility)..."
-if ! id bbsyncer &>/dev/null; then
-  useradd --system --no-create-home --shell /sbin/nologin \
-    --groups dialout,gpio bbsyncer 2>/dev/null || \
-  useradd --system --no-create-home --shell /sbin/nologin \
-    --groups dialout bbsyncer
-fi
-
-### --- 3. Install Go binary --- ###
-echo "[3/8] Installing LogFalcon binary..."
-mkdir -p "$INSTALL_DIR"
-
 # Detect architecture and copy appropriate binary
 ARCH=$(uname -m)
+if [[ "$(getconf LONG_BIT)" == 32 && "$ARCH" == aarch64 ]]; then ARCH=armv7l; fi
 case "$ARCH" in
-  armv6l)  BINARY_SUFFIX="arm6" ;;
+  armv6l|armv7l)  BINARY_SUFFIX="arm6" ;;
   aarch64) BINARY_SUFFIX="arm64" ;;
   x86_64)  BINARY_SUFFIX="amd64" ;;
   *)       echo "ERROR: Unsupported architecture: $ARCH"; exit 1 ;;
@@ -101,16 +82,63 @@ if [[ ! -f "$BINARY_SRC" ]]; then
   exit 1
 fi
 
+# Required source assets must exist before changing the machine.
+for asset in logfalcon-update.service logfalcon-update.path logfalcon@.service logfalcon-web.service logfalcon-config-apply.service \
+  logfalcon-wifi-init.service logfalcon-ready-led.service logfalcon-boot-led.service \
+  logfalcon-runtime.service logfalcon-diagnostics.service logfalcon-diagnostics-export.service \
+  logfalcon-diagnostics-export.timer logfalcon-shutdown.service 50-logfalcon.rules \
+  config-apply.sh wifi-init.sh logfalcon-boot-led.sh 99-betaflight-fc.rules journald.conf; do
+  [[ -f "$SCRIPT_DIR/system/$asset" ]] || { echo "Missing source asset: $asset; no system changes made." >&2; exit 1; }
+done
+[[ -f "$SCRIPT_DIR/config/logfalcon.toml" && -f "$SCRIPT_DIR/boot/logfalcon-config.txt" ]] || { echo "Missing configuration templates; no system changes made." >&2; exit 1; }
+
+# Validate existing values before any machine change. Bootstrap is limited to
+# complete Go/TOML installations; legacy Python layouts require manual recovery.
+if [[ $UPGRADING -eq 1 ]]; then
+ [[ -x "$INSTALL_DIR/logfalcon" ]] || { echo "Legacy runtime has no recoverable Go binary; use the documented migration/recovery route." >&2; exit 1; }
+  "$BINARY_SRC" --check-upgrade-config --config "$CONFIG_DIR/logfalcon.toml"
+  mkdir -p /run/logfalcon
+  exec 9>/run/logfalcon/transfer.lock
+  chown bbsyncer:bbsyncer /run/logfalcon/transfer.lock
+  [[ ! -e /run/logfalcon/shutdown.pending ]] || { echo "Shutdown pending; retry after boot." >&2; exit 1; }
+  flock -n 9 || { echo "Copy or shutdown is active; retry bootstrap when idle." >&2; exit 1; }
+fi
+
+### --- 1. System packages --- ###
+
+echo "[1/8] Installing system packages..."
+apt-get update -q
+apt-get install -y \
+  hostapd dnsmasq avahi-daemon \
+  rfkill polkitd iw
+
+# Unblock Wi-Fi
+rfkill unblock wlan
+
+
+### --- 2. System user --- ###
+echo "[2/8] Creating bbsyncer system user (legacy name kept for compatibility)..."
+if ! id bbsyncer &>/dev/null; then
+  useradd --system --no-create-home --shell /sbin/nologin \
+    --groups dialout,gpio bbsyncer 2>/dev/null || \
+  useradd --system --no-create-home --shell /sbin/nologin \
+    --groups dialout bbsyncer
+fi
+
+### --- 3. Install Go binary --- ###
+echo "[3/8] Installing LogFalcon binary..."
+mkdir -p "$INSTALL_DIR"
+
 install -m 755 "$BINARY_SRC" "$INSTALL_DIR/logfalcon"
 
 # Config file
 mkdir -p "$CONFIG_DIR"
 if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]]; then
   cp "$SCRIPT_DIR/config/logfalcon.toml" "$CONFIG_DIR/logfalcon.toml"
-  sed -i "s/hotspot_ssid = .*/hotspot_ssid = \"$SSID\"/" "$CONFIG_DIR/logfalcon.toml"
-  sed -i "s/hotspot_password = .*/hotspot_password = \"$WIFI_PASSWORD\"/" "$CONFIG_DIR/logfalcon.toml"
 fi
-chown -R bbsyncer:bbsyncer "$INSTALL_DIR" "$CONFIG_DIR"
+chown -R root:root "$INSTALL_DIR"
+chown -R bbsyncer:bbsyncer "$CONFIG_DIR"
+chmod 600 "$CONFIG_DIR/logfalcon.toml"
 
 ### --- 4. Log storage --- ###
 echo "[4/8] Setting up log storage directory..."
@@ -124,31 +152,28 @@ chmod 755 "$LOG_DIR"
 ### --- 5. Wi-Fi hotspot --- ###
 echo "[5/8] Configuring Wi-Fi hotspot..."
 
-# Static IP on wlan0
-if [[ -f /etc/dhcpcd.conf ]]; then
-  if ! grep -q "# LogFalcon hotspot static IP" /etc/dhcpcd.conf 2>/dev/null; then
-    cat >> /etc/dhcpcd.conf <<EOF
-
-# LogFalcon hotspot static IP
-interface wlan0
-static ip_address=$HOTSPOT_IP/24
-nohook wpa_supplicant
-EOF
-  fi
-else
-  mkdir -p /etc/systemd/network
-  cat > /etc/systemd/network/10-wlan0-static.network <<EOF
+# Configure the AP even before carrier appears; retain its address on Wi-Fi restart.
+systemctl mask dhcpcd.service 2>/dev/null || true
+mkdir -p /etc/systemd/network
+cat > /etc/systemd/network/10-wlan0-static.network <<'NETEOF'
 [Match]
 Name=wlan0
 
 [Network]
-Address=$HOTSPOT_IP/24
-EOF
-  systemctl enable systemd-networkd 2>/dev/null || true
-fi
+Address=192.168.4.1/24
+ConfigureWithoutCarrier=yes
+IgnoreCarrierLoss=yes
+DHCP=no
+IPv6AcceptRA=no
+NETEOF
+systemctl enable systemd-networkd
 
 # hostapd config
-cat > /etc/hostapd/hostapd.conf <<EOF
+if [[ ! -f "$CONFIG_DIR/hostapd.conf" && -f /etc/hostapd/hostapd.conf ]]; then
+    cp -L /etc/hostapd/hostapd.conf "$CONFIG_DIR/hostapd.conf"
+fi
+if [[ ! -f "$CONFIG_DIR/hostapd.conf" ]]; then
+cat > /etc/logfalcon/hostapd.conf <<EOF
 interface=wlan0
 driver=nl80211
 ssid=$SSID
@@ -164,12 +189,15 @@ rsn_pairwise=CCMP
 beacon_int=100
 dtim_period=2
 max_num_sta=8
-country_code=US
+country_code=GB
 ieee80211d=1
 EOF
+fi
 
 # Allow bbsyncer (web server) to rewrite hostapd.conf for settings save
-chown bbsyncer:bbsyncer /etc/hostapd/hostapd.conf
+chown bbsyncer:bbsyncer /etc/logfalcon/hostapd.conf
+chmod 600 /etc/logfalcon/hostapd.conf
+ln -sfn ../logfalcon/hostapd.conf /etc/hostapd/hostapd.conf
 
 # Enable hostapd
 sed -i 's|#DAEMON_CONF=.*|DAEMON_CONF="/etc/hostapd/hostapd.conf"|' /etc/default/hostapd
@@ -188,6 +216,7 @@ interface=wlan0
 bind-interfaces
 dhcp-range=$HOTSPOT_DHCP_START,$HOTSPOT_DHCP_END,24h
 dhcp-option=option:router,$HOTSPOT_IP
+log-dhcp
 # Redirect ALL DNS queries to Pi (captive portal)
 address=/#/$HOTSPOT_IP
 EOF
@@ -199,8 +228,8 @@ grep -q "^no-resolv" /etc/dnsmasq.conf 2>/dev/null || echo "no-resolv" >> /etc/d
 mkdir -p /etc/systemd/system/dnsmasq.service.d
 cat > /etc/systemd/system/dnsmasq.service.d/wait-for-wlan0.conf <<EOF
 [Unit]
-After=sys-subsystem-net-devices-wlan0.device network-online.target logfalcon-wifi-init.service
-Requires=sys-subsystem-net-devices-wlan0.device
+After=sys-subsystem-net-devices-wlan0.device systemd-networkd.service logfalcon-wifi-init.service
+Requires=sys-subsystem-net-devices-wlan0.device systemd-networkd.service logfalcon-wifi-init.service
 
 [Service]
 Restart=on-failure
@@ -211,7 +240,7 @@ mkdir -p /etc/systemd/system/hostapd.service.d
 cat > /etc/systemd/system/hostapd.service.d/wait-for-wlan0.conf <<EOF
 [Unit]
 After=sys-subsystem-net-devices-wlan0.device logfalcon-wifi-init.service
-Requires=sys-subsystem-net-devices-wlan0.device
+Requires=sys-subsystem-net-devices-wlan0.device systemd-networkd.service logfalcon-wifi-init.service
 
 [Service]
 Restart=on-failure
@@ -223,14 +252,15 @@ sed -i 's/^#*host-name=.*/host-name=logfalcon/' /etc/avahi/avahi-daemon.conf 2>/
 
 # Regulatory domain + rfkill init for AP mode.
 mkdir -p /etc/wpa_supplicant
+if [[ ! -f /etc/wpa_supplicant/wpa_supplicant.conf ]]; then
 cat > /etc/wpa_supplicant/wpa_supplicant.conf <<EOF
-country=US
+country=GB
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
 EOF
-if [[ -f /etc/default/crda ]]; then
-  sed -i 's/^REGDOMAIN=.*/REGDOMAIN=US/' /etc/default/crda
-  grep -q "^REGDOMAIN=" /etc/default/crda || echo "REGDOMAIN=US" >> /etc/default/crda
+fi
+if [[ -f /etc/default/crda ]] && ! grep -q '^REGDOMAIN=' /etc/default/crda; then
+    echo "REGDOMAIN=$(sed -n 's/^country_code=//p' /etc/logfalcon/hostapd.conf)" >> /etc/default/crda
 fi
 
 systemctl mask wpa_supplicant.service 2>/dev/null || true
@@ -251,11 +281,35 @@ cp "$SCRIPT_DIR/system/logfalcon-boot-led.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/system/logfalcon-ready-led.service" /etc/systemd/system/
 cp "$SCRIPT_DIR/system/logfalcon-wifi-init.service" /etc/systemd/system/
 
+for unit in logfalcon-runtime.service logfalcon-diagnostics.service logfalcon-diagnostics-export.service logfalcon-diagnostics-export.timer logfalcon-shutdown.service; do
+  install -m 644 "$SCRIPT_DIR/system/$unit" /etc/systemd/system/
+done
+install -m 755 "$SCRIPT_DIR/system/wifi-init.sh" "$INSTALL_DIR/wifi-init.sh"
+mkdir -p /etc/systemd/journald.conf.d /var/log/journal
+install -m 644 "$SCRIPT_DIR/system/journald.conf" /etc/systemd/journald.conf.d/logfalcon.conf
+
 # Boot LED heartbeat script
 install -m 755 "$SCRIPT_DIR/system/logfalcon-boot-led.sh" "$INSTALL_DIR/boot-led.sh"
 
 # Ready LED script
 install -m 755 "$SCRIPT_DIR/system/logfalcon-ready-led.sh" "$INSTALL_DIR/ready-led.sh"
+
+if [[ $UPGRADING -eq 0 ]]; then touch "$CONFIG_DIR/identity.pending"; fi
+
+# Offline updater: isolated inbox, root-owned journal, executable and trust store.
+install -m 755 "$INSTALL_DIR/logfalcon" "$INSTALL_DIR/updater"
+install -d -m 755 /var/lib/logfalcon-update /var/lib/logfalcon-update/state /usr/share/logfalcon/update-keys
+install -d -m 770 /var/lib/logfalcon-update/inbox
+chown bbsyncer:bbsyncer /var/lib/logfalcon-update/inbox
+install -m 644 "$SCRIPT_DIR/system/logfalcon-update.service" "$SCRIPT_DIR/system/logfalcon-update.path" /etc/systemd/system/
+if [[ -d "$SCRIPT_DIR/update-keys" ]]; then
+  for key in "$SCRIPT_DIR"/update-keys/*.pub; do
+    [[ -f "$key" ]] && install -m 644 "$key" /usr/share/logfalcon/update-keys/
+  done
+fi
+systemctl daemon-reload
+systemctl enable logfalcon-update.service logfalcon-update.path
+systemctl start logfalcon-update.path
 
 # Config-apply script (boot-time SSID/password applicator)
 cp "$SCRIPT_DIR/system/config-apply.sh" "$INSTALL_DIR/config-apply.sh"
@@ -265,22 +319,19 @@ cp "$SCRIPT_DIR/system/logfalcon-config-apply.service" /etc/systemd/system/
 
 # Allow bbsyncer (web server) to restart hostapd for settings save.
 mkdir -p /etc/polkit-1/rules.d
-cat > /etc/polkit-1/rules.d/50-logfalcon-hostapd.rules <<'EOF'
-polkit.addRule(function(action, subject) {
-    if (action.id == "org.freedesktop.systemd1.manage-units" &&
-        action.lookup("unit") == "hostapd.service" &&
-        subject.user == "bbsyncer") {
-        return polkit.Result.YES;
-    }
-});
-EOF
+install -m 644 "$SCRIPT_DIR/system/50-logfalcon.rules" /etc/polkit-1/rules.d/50-logfalcon-hostapd.rules
 
+install -m 644 "$SCRIPT_DIR/system/logfalcon-shutdown.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable logfalcon-config-apply.service
 systemctl enable logfalcon-wifi-init.service
 systemctl enable logfalcon-web.service
 systemctl enable logfalcon-boot-led.service
+systemctl enable logfalcon-runtime.service
 systemctl enable logfalcon-ready-led.service
+systemctl enable logfalcon-diagnostics.service
+systemctl enable logfalcon-diagnostics-export.timer
+systemctl unmask hostapd
 systemctl enable hostapd
 systemctl enable dnsmasq
 systemctl enable avahi-daemon
@@ -290,11 +341,11 @@ BOOT_DIR=""
 [[ -d /boot/firmware ]] && BOOT_DIR="/boot/firmware"
 [[ -z "$BOOT_DIR" && -d /boot ]] && BOOT_DIR="/boot"
 if [[ -n "$BOOT_DIR" && ! -f "$BOOT_DIR/logfalcon-config.txt" ]]; then
-  cp "$SCRIPT_DIR/boot/logfalcon-config.txt" "$BOOT_DIR/logfalcon-config.txt"
-fi
-if [[ -n "$BOOT_DIR" ]]; then
-  sed -i "s/^SSID=.*/SSID=$SSID/" "$BOOT_DIR/logfalcon-config.txt"
-  sed -i "s/^PASSWORD=.*/PASSWORD=$WIFI_PASSWORD/" "$BOOT_DIR/logfalcon-config.txt"
+  if [[ $UPGRADING -eq 0 ]]; then
+    printf 'SSID=%s\nPASSWORD=%s\nCOUNTRY_CODE=GB\nDEBUG=true\n' "$SSID" "$WIFI_PASSWORD" > "$BOOT_DIR/logfalcon-config.txt"
+  else
+    printf '# Existing application and Wi-Fi settings preserved.\n# Add SSID, PASSWORD, COUNTRY_CODE or DEBUG to change them on reboot.\n' > "$BOOT_DIR/logfalcon-config.txt"
+  fi
 fi
 
 ### --- 7. udev rule --- ###
@@ -302,26 +353,17 @@ echo "[7/8] Installing udev rule..."
 cp "$SCRIPT_DIR/system/99-betaflight-fc.rules" /etc/udev/rules.d/
 udevadm control --reload-rules
 
-### --- 8. Start services --- ###
-echo "[8/8] Starting services..."
-systemctl restart hostapd || true
-systemctl restart dnsmasq || true
-systemctl restart avahi-daemon || true
-systemctl start logfalcon-web.service || true
+### --- 8. Activation --- ###
+echo "Reboot to activate the coordinated network, status and diagnostic services."
 
 echo ""
 echo "=== Install complete! ==="
 echo ""
-echo "Wi-Fi hotspot: $SSID (password: $WIFI_PASSWORD)"
+echo "Wi-Fi hotspot: $SSID (password stored in the boot configuration)"
 echo "Web interface: http://$HOTSPOT_IP  or  http://logfalcon.local"
 echo ""
-if [[ $GENERATED_PASSWORD -eq 1 ]]; then
-  echo "A unique hotspot password was generated for this install."
-  echo "Keep it somewhere safe before you leave for the field."
-  echo ""
-fi
-echo "Startup note: after boot, the LED blinks slowly — when it goes solid, the Pi is ready."
-echo "To sync logs: plug a Betaflight or iNav FC into the Pi's USB OTG port."
+echo "The status LED reports copy outcomes; confirm Wi-Fi in your phone before use."
+echo "To sync logs: plug a Betaflight SPI-flash FC into the Pi's USB OTG port."
 echo "To view logs: connect to the '$SSID' Wi-Fi network."
 echo ""
 echo "Check sync service status:  journalctl -u logfalcon@ttyACM0 -f"

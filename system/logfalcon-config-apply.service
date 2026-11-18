@@ -10,8 +10,9 @@
 [Unit]
 Description=LogFalcon Config Apply
 Documentation=https://github.com/proeugene/logfalcon
-After=local-fs.target
-Before=hostapd.service logfalcon-web.service
+After=local-fs.target hostapd.service
+Wants=hostapd.service
+Before=logfalcon-web.service
 
 [Service]
 Type=oneshot

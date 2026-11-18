@@ -2,10 +2,13 @@ package web
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/proeugene/logfalcon/internal/config"
@@ -18,6 +21,7 @@ func newTestServer(t *testing.T) (*Server, string) {
 	dir := t.TempDir()
 	cfg := config.Default()
 	cfg.StoragePath = dir
+	cfg.StatusPath = filepath.Join(t.TempDir(), "status.json")
 	s := NewServer(dir, cfg)
 	// Ensure idle sync status for deterministic tests.
 	lfSync.SetStatus("idle", 0, "Ready for the next sync.")
@@ -76,6 +80,11 @@ func TestSessionsEndpoint(t *testing.T) {
 
 func TestStatusEndpoint(t *testing.T) {
 	s, _ := newTestServer(t)
+	lfSync.ConfigureStatus(s.config.StatusPath)
+	t.Cleanup(func() { lfSync.ConfigureStatus("") })
+	if err := lfSync.BeginTransfer("fake"); err != nil {
+		t.Fatal(err)
+	}
 	lfSync.SetStatus("syncing", 42, "Downloading flash...")
 
 	req := httptest.NewRequest(http.MethodGet, "/status", nil)
@@ -207,11 +216,57 @@ func TestIndexPage(t *testing.T) {
 	if !containsStr(body, "LogFalcon") {
 		t.Error("index page should contain 'LogFalcon'")
 	}
-	if !containsStr(body, "Live transfer status is unavailable") {
-		t.Error("index must explain that live completion cannot be confirmed")
+	if !containsStr(body, "No transfer recorded this boot") {
+		t.Error("index must use the shared file rather than unrelated local status")
 	}
 	if containsStr(body, "safe to unplug") {
 		t.Error("index must not render unrelated process-local completion status")
+	}
+}
+
+func TestHotspotSettingsTransaction(t *testing.T) {
+	for _, fail := range []string{"", "restart", "config"} {
+		t.Run(fail, func(t *testing.T) {
+			s, _ := newTestServer(t)
+			s.hotspotPath = filepath.Join(t.TempDir(), "hostapd.conf")
+			s.configPath = filepath.Join(t.TempDir(), "logfalcon.toml")
+			host := "ssid=Old\nwpa_passphrase=oldpassword\ncountry_code=GB\n"
+			cfg := "hotspot_ssid = \"Old\"\nhotspot_password = \"oldpassword\"\n"
+			if err := os.WriteFile(s.hotspotPath, []byte(host), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(s.configPath, []byte(cfg), 0600); err != nil {
+				t.Fatal(err)
+			}
+			restarted := false
+			s.restartHotspot = func() error {
+				restarted = true
+				if fail == "restart" {
+					return errors.New("restart rejected")
+				}
+				return nil
+			}
+			if fail == "config" {
+				s.configPath = filepath.Join(t.TempDir(), "missing")
+			}
+			form := url.Values{"csrf_token": {s.csrfToken}, "ssid": {"Pilot's hotspot"}, "password": {`quotes"and\slashes`}}
+			r := httptest.NewRequest("POST", "/settings", strings.NewReader(form.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			b, _ := os.ReadFile(s.hotspotPath)
+			if fail == "" {
+				if w.Code != 200 || !restarted || !strings.Contains(string(b), "ssid=Pilot's hotspot") {
+					t.Fatalf("save: %d %s", w.Code, w.Body.String())
+				}
+				loaded, err := config.Load(s.configPath)
+				if err != nil || loaded.HotspotPassword != form.Get("password") {
+					t.Fatal("invalid persisted TOML", err)
+				}
+			} else if w.Code != 500 || string(b) != host {
+				t.Fatalf("failure did not roll back: %d %s", w.Code, b)
+			}
+		})
 	}
 }
 
@@ -243,57 +298,6 @@ func TestSessionEraseOutcomes(t *testing.T) {
 				t.Error("a manifest without a saved file must not offer a log download")
 			}
 		})
-	}
-}
-
-func TestRewritePrefixedLinesAtomic(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "hostapd.conf")
-	original := "interface=wlan0\n  ssid=OldName\nwpa_passphrase=oldpassword\n"
-	if err := os.WriteFile(path, []byte(original), 0o640); err != nil {
-		t.Fatal(err)
-	}
-
-	ok := rewritePrefixedLines(path, map[string]string{
-		"ssid=":           "ssid=NewName",
-		"wpa_passphrase=": "wpa_passphrase=newpassword",
-		"channel=":        "channel=6",
-	})
-	if !ok {
-		t.Fatal("rewritePrefixedLines returned false")
-	}
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := "interface=wlan0\n  ssid=NewName\nwpa_passphrase=newpassword\nchannel=6\n"
-	if string(data) != want {
-		t.Fatalf("unexpected file content:\nwant %q\n got %q", want, string(data))
-	}
-
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := info.Mode().Perm(); got != 0o640 {
-		t.Fatalf("expected mode 0640, got %v", got)
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range entries {
-		if entry.Name() != "hostapd.conf" {
-			t.Fatalf("unexpected temp file left behind: %s", entry.Name())
-		}
-	}
-}
-
-func TestRewritePrefixedLinesMissingFile(t *testing.T) {
-	if rewritePrefixedLines(filepath.Join(t.TempDir(), "missing.conf"), map[string]string{"ssid=": "ssid=x"}) {
-		t.Fatal("expected missing file rewrite to fail")
 	}
 }
 

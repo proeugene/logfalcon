@@ -31,8 +31,13 @@ install -m 644 "${REPO_ROOT}/system/logfalcon-wifi-init.service" "${ROOTFS_DIR}/
 install -m 644 "${REPO_ROOT}/system/logfalcon-boot-led.service" "${ROOTFS_DIR}/etc/systemd/system/"
 install -m 644 "${REPO_ROOT}/system/logfalcon-ready-led.service" "${ROOTFS_DIR}/etc/systemd/system/"
 
+for unit in logfalcon-runtime.service logfalcon-diagnostics.service logfalcon-diagnostics-export.service logfalcon-diagnostics-export.timer logfalcon-shutdown.service; do
+    install -m 644 "${REPO_ROOT}/system/$unit" "${ROOTFS_DIR}/etc/systemd/system/"
+done
+install -m 755 "${REPO_ROOT}/system/wifi-init.sh" "${ROOTFS_DIR}/opt/logfalcon/wifi-init.sh"
+
 # Copy journald drop-in (SD card protection)
-mkdir -p "${ROOTFS_DIR}/etc/systemd/journald.conf.d"
+mkdir -p "${ROOTFS_DIR}/etc/systemd/journald.conf.d" "${ROOTFS_DIR}/var/log/journal"
 install -m 644 "${REPO_ROOT}/system/journald.conf" "${ROOTFS_DIR}/etc/systemd/journald.conf.d/logfalcon.conf"
 
 # Copy boot LED heartbeat script
@@ -52,19 +57,13 @@ install -m 644 "${REPO_ROOT}/system/99-betaflight-fc.rules" "${ROOTFS_DIR}/etc/u
 
 # Allow bbsyncer to restart hostapd via systemctl (needed for web settings save)
 mkdir -p "${ROOTFS_DIR}/etc/polkit-1/rules.d"
-cat > "${ROOTFS_DIR}/etc/polkit-1/rules.d/50-logfalcon-hostapd.rules" <<'POLICYEOF'
-polkit.addRule(function(action, subject) {
-    if (action.id == "org.freedesktop.systemd1.manage-units" &&
-        action.lookup("unit") == "hostapd.service" &&
-        subject.user == "bbsyncer") {
-        return polkit.Result.YES;
-    }
-});
-POLICYEOF
+install -m 644 "${REPO_ROOT}/system/50-logfalcon.rules" "${ROOTFS_DIR}/etc/polkit-1/rules.d/50-logfalcon-hostapd.rules"
 
-# Copy boot config
+# Copy boot config (fresh image; never replace an existing operator edit).
+if [[ ! -f "${ROOTFS_DIR}/boot/firmware/logfalcon-config.txt" && ! -f "${ROOTFS_DIR}/boot/logfalcon-config.txt" ]]; then
 install -m 644 "${REPO_ROOT}/boot/logfalcon-config.txt" "${ROOTFS_DIR}/boot/firmware/" 2>/dev/null || \
 install -m 644 "${REPO_ROOT}/boot/logfalcon-config.txt" "${ROOTFS_DIR}/boot/"
+fi
 
 # --- Bookworm headless: pre-create userconf.txt so userconf-pi skips the wizard ---
 # This is the official Bookworm mechanism for headless user setup.
@@ -81,7 +80,11 @@ systemctl enable logfalcon-web.service
 systemctl enable logfalcon-config-apply.service
 systemctl enable logfalcon-wifi-init.service
 systemctl enable logfalcon-boot-led.service
+systemctl enable logfalcon-runtime.service
 systemctl enable logfalcon-ready-led.service
+systemctl enable logfalcon-diagnostics.service
+systemctl enable logfalcon-diagnostics-export.timer
+systemctl unmask hostapd
 systemctl enable hostapd
 systemctl enable dnsmasq
 systemctl enable avahi-daemon

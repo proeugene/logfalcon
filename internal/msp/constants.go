@@ -43,14 +43,13 @@ const (
 
 // Dataflash flags.
 const (
-	DataflashFlagSupported = 0x01
-	DataflashFlagReady     = 0x02
+	DataflashFlagSupported = 0x02
+	DataflashFlagReady     = 0x01
 )
 
 // Compression types.
 const (
-	DataflashCompressionNone    = 0
-	DataflashCompressionHuffman = 1
+	DataflashCompressionNone = 0
 )
 
 // FC variant identifiers.

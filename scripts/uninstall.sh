@@ -16,7 +16,8 @@ info "Uninstalling LogFalcon..."
 
 # --- Stop and disable services -----------------------------------------------
 info "Stopping services..."
-for svc in logfalcon-web logfalcon-config-apply logfalcon-wifi-init logfalcon-firstboot logfalcon-boot-led logfalcon-ready-led "logfalcon@*"; do
+systemctl disable --now logfalcon-diagnostics-export.timer 2>/dev/null || true
+for svc in logfalcon-diagnostics-export logfalcon-diagnostics logfalcon-runtime logfalcon-web logfalcon-config-apply logfalcon-wifi-init logfalcon-firstboot logfalcon-boot-led logfalcon-ready-led "logfalcon@*"; do
     systemctl stop "$svc".service 2>/dev/null || true
     systemctl disable "$svc".service 2>/dev/null || true
 done
@@ -30,6 +31,11 @@ rm -f /etc/systemd/system/logfalcon-wifi-init.service
 rm -f /etc/systemd/system/logfalcon-firstboot.service
 rm -f /etc/systemd/system/logfalcon-boot-led.service
 rm -f /etc/systemd/system/logfalcon-ready-led.service
+rm -f /etc/systemd/system/logfalcon-runtime.service
+rm -f /etc/systemd/system/logfalcon-diagnostics.service
+rm -f /etc/systemd/system/logfalcon-diagnostics-export.service
+rm -f /etc/systemd/system/logfalcon-diagnostics-export.timer
+rm -f /etc/systemd/journald.conf.d/logfalcon.conf
 rm -f /etc/systemd/system/dnsmasq.service.d/wait-for-wlan0.conf
 rm -f /etc/systemd/system/hostapd.service.d/wait-for-wlan0.conf
 rmdir /etc/systemd/system/dnsmasq.service.d 2>/dev/null || true
@@ -96,6 +102,7 @@ systemctl unmask wpa_supplicant.service 2>/dev/null || true
 systemctl unmask wpa_supplicant@wlan0.service 2>/dev/null || true
 systemctl unmask NetworkManager.service 2>/dev/null || true
 systemctl unmask NetworkManager-wait-online.service 2>/dev/null || true
+systemctl unmask dhcpcd.service 2>/dev/null || true
 systemctl unmask ModemManager.service 2>/dev/null || true
 
 echo ""

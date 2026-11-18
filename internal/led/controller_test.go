@@ -9,11 +9,11 @@ import (
 
 // mockBackend records LED state for testing.
 type mockBackend struct {
-	mu              sync.Mutex
-	on              bool
-	setCount        int64 // atomic
-	disableTrigger  bool
-	restoreTrigger  bool
+	mu             sync.Mutex
+	on             bool
+	setCount       int64 // atomic
+	disableTrigger bool
+	restoreTrigger bool
 }
 
 func (m *mockBackend) Set(on bool) {

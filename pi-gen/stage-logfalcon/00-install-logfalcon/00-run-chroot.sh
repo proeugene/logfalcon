@@ -36,9 +36,13 @@ else
     exit 1
 fi
 
+install -m 644 "$REPO_DIR/LICENSE" "$INSTALL_DIR/LICENSE"
+
 # Config
 mkdir -p "$CONFIG_DIR"
-cp "$REPO_DIR/config/logfalcon.toml" "$CONFIG_DIR/logfalcon.toml"
+if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]]; then
+    cp "$REPO_DIR/config/logfalcon.toml" "$CONFIG_DIR/logfalcon.toml"
+fi
 
 # Log storage
 mkdir -p "$LOG_DIR"
@@ -53,7 +57,8 @@ chmod +x "$INSTALL_DIR/config-apply.sh"
 mkdir -p /var/lib/logfalcon
 
 # Ownership
-chown -R bbsyncer:bbsyncer "$INSTALL_DIR" "$CONFIG_DIR"
+chown -R bbsyncer:bbsyncer "$CONFIG_DIR"
+chmod 600 "$CONFIG_DIR/logfalcon.toml"
 
 # ── Disable conflicting services ────────────────────────────────────────────
 # This is an AP-only appliance. Several services fight hostapd for wlan0.
@@ -92,4 +97,20 @@ ln -sf /dev/null /etc/systemd/system/ModemManager.service
 # (No action needed here — just let it run.)
 
 # Cleanup
+
+
+# Identity is generated on the installed device, never in the shared image.
+touch /etc/logfalcon/identity.pending
+
+install -m 755 /opt/logfalcon/logfalcon /opt/logfalcon/updater
+install -d -m 755 /var/lib/logfalcon-update /var/lib/logfalcon-update/state /usr/share/logfalcon/update-keys
+install -d -m 770 -o bbsyncer -g bbsyncer /var/lib/logfalcon-update/inbox
+install -m 644 "$REPO_DIR/system/logfalcon-update.service" "$REPO_DIR/system/logfalcon-update.path" /etc/systemd/system/
+if [ -d "$REPO_DIR/update-keys" ]; then
+ for key in "$REPO_DIR"/update-keys/*.pub; do
+  [ -f "$key" ] && install -m 644 "$key" /usr/share/logfalcon/update-keys/
+ done
+fi
+systemctl enable logfalcon-update.service logfalcon-update.path
+
 rm -rf "$REPO_DIR"

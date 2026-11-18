@@ -2,16 +2,11 @@
 # Minimize image size.
 # Runs inside the image chroot after logfalcon is fully installed.
 
-echo "=== [logfalcon] Pre-cleanup disk usage ==="
-df -h /
+echo "=== [logfalcon] Pre-cleanup rootfs contents ==="
+du -xsh /usr /var /opt /boot
 
-# ── Journald size limits (protect SD card from log accumulation) ─────────────
-mkdir -p /etc/systemd/journald.conf.d
-cat > /etc/systemd/journald.conf.d/logfalcon.conf <<EOF
-[Journal]
-SystemMaxUse=50M
-MaxRetentionSec=1week
-EOF
+# The canonical journald configuration was installed by 00-run.sh.
+# Do not overwrite persistence/retention settings here.
 
 # ---- 1. Remove appliance-irrelevant packages --------------------------------
 # nfs-common, triggerhappy, lua5.1 come from stage2 but serve no purpose here.
@@ -30,19 +25,20 @@ apt-get autoremove -y --purge
 # (e.g. userconf-pi). The lists are tiny and compress well inside the final .xz.
 apt-get clean
 
-# ---- 3. Remove documentation ------------------------------------------------
+# Preserve /usr/share/doc, including package copyright and licence notices.
+# ---- 3. Remove optional manual pages ------------------------------------------------
 rm -rf \
-    /usr/share/doc/* \
     /usr/share/man/* \
     /usr/share/info/* \
     /usr/share/groff/* \
     /usr/share/lintian/*
 
-# ---- 4. Remove locale data (keep en / en_US only) ---------------------------
+# ---- 4. Remove locale data (keep English, including UK locale) --------------
 find /usr/share/locale -mindepth 1 -maxdepth 1 \
     ! -name 'locale.alias' \
     ! -name 'en' \
     ! -name 'en_US' \
+    ! -name 'en_GB' \
     -exec rm -rf {} + 2>/dev/null || true
 
 # ---- 5. Boot speed optimizations -------------------------------------------
@@ -77,5 +73,8 @@ systemctl disable bluetooth.service 2>/dev/null || true
 # ---- 9. Temp / history ------------------------------------------------------
 rm -rf /tmp/* /var/tmp/* /root/.bash_history 2>/dev/null || true
 
-echo "=== [logfalcon] Post-cleanup disk usage ==="
-df -h /
+echo "=== [logfalcon] Post-cleanup rootfs contents ==="
+# df in this chroot reports the build host's filesystem, not the exported image.
+du -xh --max-depth=1 /usr /var /opt /boot
+echo "=== [logfalcon] Largest installed packages (KiB) ==="
+dpkg-query -W -f='${Installed-Size}\t${Package}\n' | sort -nr | sed -n '1,20p'

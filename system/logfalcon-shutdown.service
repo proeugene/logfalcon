@@ -1,0 +1,6 @@
+[Unit]
+Description=LogFalcon idle power off
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --no-block poweroff

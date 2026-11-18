@@ -1,0 +1,12 @@
+[Unit]
+Description=LogFalcon bounded diagnostics snapshot
+After=logfalcon-diagnostics.service
+RequiresMountsFor=/boot /var/lib/logfalcon
+
+[Service]
+Type=oneshot
+ExecStart=/opt/logfalcon/logfalcon --diagnostics export
+TimeoutStartSec=20
+Nice=15
+IOSchedulingClass=idle
+UMask=0077

@@ -17,6 +17,7 @@ const (
 	Busy          // 150ms on / 150ms off fast blink
 	Done          // 5× rapid flash then 3s solid then off
 	Error         // SOS pattern
+	Saved         // persistent double blink: saved copy completed
 )
 
 // Backend abstracts LED hardware control.
@@ -55,6 +56,7 @@ var patterns = map[State]pattern{
 		// pause
 		{700, 700},
 	}, repeat: true},
+	Saved: {steps: []step{{100, 100}, {100, 1700}}, repeat: true},
 }
 
 // Controller drives an LED through state-based blink patterns.
@@ -81,6 +83,8 @@ func New(backend string, gpioPin int) *Controller {
 		done:    make(chan struct{}),
 	}
 	switch backend {
+	case "none":
+		c.backend = &noopBackend{}
 	case "gpio":
 		c.backend = &gpioBackend{pin: gpioPin}
 	default:
@@ -271,27 +275,41 @@ func (c *Controller) waitForChangeOrStop() bool {
 
 // --- sysfs backend ---
 
-const (
-	sysfsLEDBrightness = "/sys/class/leds/led0/brightness"
-	sysfsLEDTrigger    = "/sys/class/leds/led0/trigger"
-)
+type noopBackend struct{}
+
+func (*noopBackend) Set(bool)        {}
+func (*noopBackend) DisableTrigger() {}
+func (*noopBackend) RestoreTrigger() {}
 
 type sysfsBackend struct{}
+
+func ledPath(name string) string {
+	for _, dir := range []string{"/sys/class/leds/ACT", "/sys/class/leds/led0"} {
+		if _, err := os.Stat(dir); err == nil {
+			return dir + "/" + name
+		}
+	}
+	return "/sys/class/leds/led0/" + name
+}
 
 func (b *sysfsBackend) Set(on bool) {
 	val := "0"
 	if on {
 		val = "1"
 	}
-	_ = os.WriteFile(sysfsLEDBrightness, []byte(val), 0644)
+	if err := os.WriteFile(ledPath("brightness"), []byte(val), 0644); err != nil {
+		slog.Debug("LED write failed", "error", err)
+	}
 }
 
 func (b *sysfsBackend) DisableTrigger() {
-	_ = os.WriteFile(sysfsLEDTrigger, []byte("none"), 0644)
+	if err := os.WriteFile(ledPath("trigger"), []byte("none"), 0644); err != nil {
+		slog.Warn("LED control unavailable", "error", err)
+	}
 }
 
 func (b *sysfsBackend) RestoreTrigger() {
-	_ = os.WriteFile(sysfsLEDTrigger, []byte("mmc0"), 0644)
+	_ = os.WriteFile(ledPath("trigger"), []byte("mmc0"), 0644)
 }
 
 // --- gpio backend (placeholder) ---

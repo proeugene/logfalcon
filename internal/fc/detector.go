@@ -87,7 +87,7 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	// Its current DATAFLASH_SUMMARY wire layout has not been validated here.
 	// Do not guess storage state, particularly when automatic erase is enabled.
 	if variant == msp.INAVVariant {
-		return nil, &DetectionError{Message: "iNav — Experimental; copying currently disabled", ReasonCode: "unsupported_controller"}
+		return nil, &DetectionError{Message: "iNav copying is disabled. Use a Betaflight controller that records to internal SPI flash.", ReasonCode: "unsupported_controller"}
 	}
 
 	// 3. Firmware version string (best effort — some older FC builds don't support this)

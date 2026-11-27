@@ -34,10 +34,10 @@
         <h2 class="section-label">Set up the Pi</h2>
         <div class="info-box"><p><strong>For your first copy,</strong> keep automatic erasure and storage cleanup switched off. This keeps the original on the controller and your saved recordings on the Pi. <a href="#copy-settings">Check the two settings</a>.</p></div>
         <h3>Hardware</h3>
-        <p>You need a Pi Zero W or Zero 2 W, a 16 GB+ microSD card, a suitable 5 V USB supply, an OTG adapter and a controller data cable. The primary development target is Betaflight logging to internal SPI flash.</p>
+        <p>You need a Pi Zero W or Zero 2 W, a 16 GB+ microSD card, a suitable 5 V USB supply, an OTG adapter and a controller data cable. Use a Betaflight flight controller that records to internal SPI flash.</p>
         <h3>Flash and boot</h3>
         <ol class="numbered-list">
-          <li><span>Build the SD image from this checkout and verify it against <code>checksums.txt</code>. As of 27 November 2026, there’s no published SD image for this revision. <a href="#build-image">Image build instructions</a> · <a href="https://github.com/proeugene/logfalcon/releases">Releases</a></span></li>
+          <li><span>Choose a version on <a href="https://github.com/proeugene/logfalcon/releases">GitHub Releases</a> and read its notes. Under <strong>Assets</strong>, look for the SD card image ending in <code>.img.xz</code>. Check its SHA-256 against the digest for that asset before flashing. If your chosen version has no image, <a href="#build-image">build one from its source</a>.</span></li>
           <li><span>Flash it using Raspberry Pi Imager or Etcher. On the boot partition, optionally edit <code>logfalcon-config.txt</code> to set <code>SSID</code>, <code>PASSWORD</code> and <code>COUNTRY_CODE</code> (for example, <code>GB</code> in the UK).</span></li>
           <li><span>Insert the card, power the Pi through <strong>PWR IN</strong> and wait for its hotspot to appear.</span></li>
           <li><span>On a fresh installation, join the Wi-Fi network named <strong>LogFalcon-</strong> followed by the device's 12-character ID, or your configured network name. Upgrades keep the existing name. The temporary default password is <code>fpvpilot</code>. Open <a href="http://log.falcon">http://log.falcon</a> or <a href="http://192.168.4.1">http://192.168.4.1</a>.</span></li>
@@ -47,7 +47,7 @@
         <p>Connect over SSH with <code>ssh pi@192.168.4.1</code>. In <code>/etc/logfalcon/logfalcon.toml</code>, confirm both settings have the following values.</p>
         <pre><code>erase_after_sync = false
 storage_pressure_cleanup = false</code></pre>
-        <p>New installations default both behaviours to off. Upgrades preserve existing configuration, including previously enabled destructive settings. Invalid configuration stops copying. For manual evaluation, <code>--dry-run</code> also skips erasure.</p>
+        <p>New installations default both behaviours to off. Upgrades preserve existing configuration, including previously enabled destructive settings. Invalid configuration stops copying. For a manual transfer, <code>--dry-run</code> copies the recording and skips erasure.</p>
         <p>The supplied image uses SSH user <code>pi</code> and default password <code>logfalcon</code>. Change it with <code>passwd</code>. SSH and hotspot passwords are separate.</p>
       </section>
       <section id="first-sync" class="doc-section">
@@ -66,7 +66,6 @@ storage_pressure_cleanup = false</code></pre>
         </figure>
         <pre><code># Follow transfer results over SSH
 journalctl -u 'logfalcon@*' -f</code></pre>
-        <p>When reporting a test, include the Pi model, FC model, firmware, bytes copied, time taken and whether the downloaded file opens correctly.</p>
       </section>
       <section id="download-logs" class="doc-section">
         <h2 class="section-label">Download logs</h2>
@@ -76,44 +75,40 @@ journalctl -u 'logfalcon@*' -f</code></pre>
         <p>On the Pi, look under <code>/mnt/logfalcon-logs/fc_VARIANT_uid-XXXXXXXX/DATE_TIME/</code> for <code>raw_flash.bbl</code> and <code>manifest.json</code>. The saved-file checksum compares the incoming bytes with a reread from the Pi’s storage. Opening the file in the Viewer checks that it decodes.</p>
       </section>
       <section id="compatibility" class="doc-section">
-        <h2 class="section-label">Compatibility and current limitations</h2>
+        <h2 class="section-label">Which controllers work with LogFalcon?</h2>
         <ul class="guide-list">
-          <li><strong>Betaflight / SPI flash:</strong> the main development target. The code rejects MSP API versions older than 1.41. That version check is not a hardware compatibility guarantee.</li>
-          <li><strong>Automated transfer checks:</strong> regression tests cover bounded, non-zero read requests and parsing the blackbox storage-device field. Real-controller transfer and decoding still require physical validation.</li>
-          <li><strong>iNav</strong> copying is disabled pending validation of its flash data format.</li>
-          <li><strong>Unsupported:</strong> controller-side SD card logs and ArduPilot.</li>
-          <li><strong>Dashboard:</strong> web and sync services share an atomic runtime status file. Interrupted or unreadable status does not confirm completion.</li>
-          <li><strong>Pi Zero W and Zero 2 W.</strong> The remaining field check for this revision is to copy a recording, unplug the controller and download the file over Wi-Fi on each model. <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md">Hardware test record</a>.</li>
+          <li><strong>Flight controller.</strong> Use Betaflight with Blackbox Device set to SPI Flash. LogFalcon blocks firmware below MSP API 1.41 and warns above API 1.48, the highest version checked against the Betaflight protocol. It cannot copy from iNav, ArduPilot or a controller’s SD card.</li>
+          <li><strong>Raspberry Pi.</strong> The image targets the Pi Zero W and Zero 2 W. Check the <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md">field test record</a> for observations on individual boards and the <a href="roadmap.html">roadmap</a> for upcoming checks.</li>
         </ul>
         <p>Report findings through <a href="https://github.com/proeugene/logfalcon/issues">GitHub Issues</a>. LogFalcon is independent of the Betaflight and iNav projects.</p>
       </section>
       <section id="configuration" class="doc-section">
         <h2 class="section-label">Configuration</h2>
         <p>The installed file is <code>/etc/logfalcon/logfalcon.toml</code>. An explicit <code>--config</code> path must exist and be valid. Otherwise the system file, local <code>config/logfalcon.toml</code> and safe defaults are considered in order. Invalid files, values and unknown keys stop startup.</p>
-        <pre><code># Safe defaults; keep these during evaluation
+        <pre><code># Keep recordings on both the controller and the Pi
  erase_after_sync = false
  storage_pressure_cleanup = false
  min_free_space_mb = 200
  flash_read_compression = false  # compression is unsupported</code></pre>
         <p>Use the dashboard's Settings page to change the hotspot SSID and password. A Wi-Fi restart may disconnect the browser. If saving fails, update the Pi configuration over SSH and inspect the web-service log.</p>
-        <p>Leave <code>idle_shutdown_minutes = 0</code> during evaluation. Shared transfer status is available, but automatic shutdown needs separate hardware acceptance.</p>
+        <p>Leave <code>idle_shutdown_minutes = 0</code> to keep the Pi running between flights.</p>
         <p>See the repository's <a href="https://github.com/proeugene/logfalcon/blob/main/config/logfalcon.toml">configuration file</a> for all available settings and their current defaults.</p>
       </section>
       <section id="led-reference" class="doc-section">
         <h2 class="section-label">LED reference</h2>
-        <p>The intended patterns are: slow pulse while waiting for the first transfer, solid after confirming an empty controller, fast blink for work, repeating double blink after a saved copy, and SOS for error.</p>
-        <p><strong>Current limitation:</strong> A dedicated service drives the LED from shared status and keeps errors distinct from success. LED paths and patterns still need hardware validation. Confirm the outcome against the dashboard and service log.</p>
+        <p>The dashboard and the Pi’s activity LED use the same transfer status. The LED uses a slow pulse for waiting, a fast blink for work in progress and a repeating double blink for a saved copy. A solid light means the controller reported empty flash. SOS signals an error.</p>
+        <p>Before unplugging, check <strong>Latest transfer</strong> on the dashboard for the result and saved size. If the light and dashboard disagree, check the transfer service log.</p>
       </section>
       <section id="troubleshooting" class="doc-section">
         <h2 class="section-label">Troubleshooting and administration</h2>
-        <details class="faq"><summary>Hotspot or dashboard does not appear</summary><div class="faq-body"><p>Check the power supply and try <code>http://192.168.4.1</code> while connected to LogFalcon Wi-Fi. Open the address explicitly; automatic captive-portal opening is not guaranteed.</p><pre><code>journalctl -u logfalcon-web -n 50
+        <details class="faq"><summary>Hotspot or dashboard does not appear</summary><div class="faq-body"><p>Check the power supply and join LogFalcon Wi-Fi. If the dashboard doesn’t open automatically, enter <code>http://192.168.4.1</code> in your browser.</p><pre><code>journalctl -u logfalcon-web -n 50
 journalctl -u hostapd -n 50</code></pre></div></details>
         <details class="faq"><summary>Controller is not detected or transfer fails</summary><div class="faq-body"><p>Use the Pi's data port and a known data cable. Check whether the controller appears as <code>/dev/ttyACM*</code> or <code>/dev/ttyUSB*</code>. Keep automatic erasure disabled and include the service log in a bug report.</p><pre><code>lsusb
 journalctl -u 'logfalcon@*' -n 100</code></pre></div></details>
         <details class="faq"><summary>SSH and health checks</summary><div class="faq-body"><pre><code>ssh pi@192.168.4.1
 passwd
 curl http://127.0.0.1/health</code></pre><p>The default SSH password is <code>logfalcon</code>. Health reports information from the web process; an OK response does not establish transfer success.</p></div></details>
-        <details class="faq"><summary>Installing on an existing Raspberry Pi OS</summary><div class="faq-body"><p>The repository's <code>scripts/install.sh</code> installs packages, services and an AP-only network configuration. Review it before running it on an existing Pi; it changes system networking.</p><pre><code>sudo bash scripts/install.sh</code></pre><p>The matching <code>scripts/uninstall.sh</code> removes the installation. A fresh image is the simpler evaluation route.</p></div></details>
+        <details class="faq"><summary>Installing on an existing Raspberry Pi OS</summary><div class="faq-body"><p>The repository's <code>scripts/install.sh</code> installs packages, services and an AP-only network configuration. Review it before running it on an existing Pi; it changes system networking.</p><pre><code>sudo bash scripts/install.sh</code></pre><p>The matching <code>scripts/uninstall.sh</code> removes the installation. To keep your existing system, flash the LogFalcon image to a spare card.</p></div></details>
       </section>
       <section id="building" class="doc-section">
         <h2 class="section-label">Development</h2>
@@ -125,17 +120,17 @@ make test
 make lint     # Requires golangci-lint
 make build-pi
 make build-pi2</code></pre>
-        <p>Tests run without hardware. The protocol, FC detection, storage, sync, web, LED and configuration code live in separate packages under <code>internal/</code>. Passing tests and builds do not validate real-device behaviour.</p>
+        <p>The tests use a simulated serial connection and temporary files, so you can run them without a Pi. See the <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md">test record</a> for runs on physical hardware.</p>
         <h3>Development diagnostics</h3><p>Extra protocol metadata is enabled by default (<code>DEBUG=true</code>), with UK Wi-Fi country <code>GB</code>. Shut down cleanly, insert the card into the Mac and copy <code>LOGFALCON-DIAGNOSTICS/latest.json</code>. It contains bounded, redacted recent events, not a complete journal. Abrupt power loss can lose the last events. See the <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md">diagnostics and physical acceptance instructions</a>. To reduce logging, set <code>DEBUG=false</code> in the boot configuration and reboot.</p>
         <h3 id="dashboard-preview">Preview the dashboard locally</h3>
         <pre><code>mkdir -p /tmp/logfalcon-preview
 LOGFALCON_STORAGE_PATH=/tmp/logfalcon-preview LOGFALCON_WEB_PORT=8080 ./bin/logfalcon --web</code></pre>
         <p>Open <code>http://localhost:8080</code> to see the dashboard’s <strong>Recordings</strong>, <strong>Updates</strong> and <strong>Settings</strong> pages. The local preview runs without a flight controller or Pi hotspot.</p>
         <h3 id="build-image">Build the image</h3>
-        <p>With Docker running on macOS or Linux, run the following command from the root of the checkout you want to evaluate.</p>
+        <p>With Docker running on macOS or Linux, run the following command from the root of your checkout.</p>
         <pre><code>bash pi-gen/build.sh --clean</code></pre>
         <p>Open the new run directory under <code>pi-gen/deploy/</code>. Check <code>build-info.txt</code> for the source revision and run <code>shasum -a 256 -c checksums.txt</code> there. Flash the verified <code>.img.xz</code> to a spare card.</p>
-        <p>The tag-triggered release workflow builds Linux ARM6, ARM64 and AMD64 binaries, builds and inspects the image, and checks required release assets. Inspect the workflow result rather than assuming a tag produced a working image.</p>
+        <p>The tag-triggered release workflow builds Linux ARM6, ARM64 and AMD64 binaries, builds and inspects the image, and checks required release assets.</p>
         <p>See <a href="https://github.com/proeugene/logfalcon/blob/main/CONTRIBUTING.md">Contributing</a> and the <a href="https://github.com/proeugene/logfalcon/blob/main/RELEASE_CHECKLIST.md">release checklist</a> for further details.</p>
       </section>
       <section id="cli" class="doc-section">
@@ -149,6 +144,6 @@ logfalcon --version</code></pre>
       </section>
     </main>
   </div>
-  <footer><a href="index.html">LogFalcon</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon/issues">Report a problem</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon">Source code</a></footer>
+  <footer><a href="index.html">LogFalcon</a><span class="footer-sep">·</span><a href="roadmap.html">Roadmap</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon/issues">Report a problem</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon">Source code</a></footer>
 </body>
 </html>

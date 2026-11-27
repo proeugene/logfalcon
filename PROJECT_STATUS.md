@@ -1,4 +1,6 @@
-# LogFalcon candidate status
+# October 2026 engineering snapshot
+
+For upcoming work, see the [roadmap](https://proeugene.github.io/logfalcon/roadmap.html). Published downloads and version notes are on [GitHub Releases](https://github.com/proeugene/logfalcon/releases).
 
 Updated 20 October 2026. Local source candidate based on
 `91847b19b5ba4427d13b490de121622f9c61f768` plus uncommitted changes. Not published.
@@ -23,9 +25,3 @@ peer and synthetic upstream-layout fixtures do not substitute for a real FC.
 
 [Architecture](docs/ARCHITECTURE.md) · [Compatibility](docs/FC_COMPATIBILITY_ANALYSIS.md)
 · [AI assistance](docs/AI_ASSISTED_DEVELOPMENT.md) · [Release gates](RELEASE_CHECKLIST.md)
-
-Next: review the diff, build and inspect the exact SD image on Linux, then perform
-physical acceptance with erasure/cleanup off. Record a real log opening in
-Blackbox Explorer, failures and timings. After that, obtain one independent
-pilot's feedback before publication. Licence-holder confirmation and repository
-protection/security settings remain maintainer actions; see the testing record.

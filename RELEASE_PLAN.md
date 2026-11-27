@@ -5,16 +5,11 @@
 **Target:** `v0.5.0-beta.1`  
 **Product scope:** Raspberry Pi Zero 2 W, Betaflight, SPI flash, prebuilt image.
 
-The findings and rationale behind this plan are recorded in `LOGFALCON_REVIEW_2026-07-27.md`.
-
-The local candidate now implements and automatically tests transfer safety,
-cross-process status, contained file access, settings recovery and release-input
-checks. Physical image/Wi-Fi/controller acceptance remains outstanding. See
-[PROJECT_STATUS.md](PROJECT_STATUS.md) and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)
-for the current gates. The phases below retain the earlier planning record;
-uncompleted estimates and proposed power work are not prerequisites added by
-this implementation pass. Do not use old checkbox state as evidence that a fix
-is absent or a physical check has passed.
+This is the July–October planning record. Its estimates and checkboxes reflect that period.
+See the [roadmap](https://proeugene.github.io/logfalcon/roadmap.html) for upcoming work,
+the [test record](DEVELOPMENT_TESTING.md) for results and the
+[release checklist](RELEASE_CHECKLIST.md) for publication requirements.
+The original findings are in the [July review](LOGFALCON_REVIEW_2026-07-27.md).
 
 ## Release goal
 

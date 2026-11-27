@@ -1,12 +1,11 @@
-# Candidate and release gates
+# Release checklist
 
-The current checkout is a local candidate, not a published or hardware-validated
-release. Use [DEVELOPMENT_TESTING.md](DEVELOPMENT_TESTING.md) as the physical
-acceptance procedure; do not duplicate or shorten those tests into a smoke-only
-sign-off.
+Use this checklist for each release. Record hardware results against the exact
+image in the [physical acceptance record](DEVELOPMENT_TESTING.md). The
+[roadmap](https://proeugene.github.io/logfalcon/roadmap.html) summarises the next field tests.
 
-1. Review the diff and confirm [provenance](docs/PROVENANCE.md), including the
-   copyright-holder discrepancy and any obligations for older distributions.
+1. Review the diff and confirm [provenance](docs/PROVENANCE.md), including any
+   obligations for older distributions.
 2. Run the checks in [CONTRIBUTING.md](CONTRIBUTING.md). Require successful Linux
    installer/transaction tests, race tests, vet, lint, fuzz and actionable
    vulnerability scans. No blanket suppression of scanner failures.
@@ -23,7 +22,7 @@ sign-off.
    Open a downloaded real dump in Blackbox Explorer. Check SD diagnostic retrieval.
 5. Obtain one independent pilot's attempt at the documented workflow. Record
    failures/confusion before broadening compatibility claims or publishing.
-6. Select the intended experimental version, review notes and run the release
+6. Choose the version and prerelease status, review notes and run the release
    workflow. It builds binaries/image from the same commit, packages integration
    assets, a source archive, changelog and full build identity, then checksums all
    payloads. Releases are created as drafts for final maintainer review.
@@ -39,13 +38,11 @@ before system changes. Do not fall back to mutable files from `main`.
 Before publishing, verify downloaded assets against `checksums.txt`, check the
 installed `--version`, and retain physical results for that exact image. A
 rebuild with different package inputs requires a new artifact checksum and
-acceptance record. Do not imply that the earlier local candidate's checks apply
-to a different image.
+acceptance record.
 
-Maintainer settings still needed (read-only inspection, 20 October 2026): main
-branch protection/required checks or rulesets; Dependabot alerts/security updates;
-private vulnerability reporting. Secret scanning and push protection were enabled
-and no open secret alerts were returned. Settings were inspected, not changed.
+Review branch protection and required checks, Dependabot alerts and security
+updates, private vulnerability reporting, secret scanning and push protection
+in the repository settings.
 
 Offline updates additionally require all three signed .lfu files, trusted public
 keys/key list, and the updater service/path from the same release commit.
@@ -53,4 +50,4 @@ Provision signing and test the rotation/direct-upgrade route as described in
 [OFFLINE_UPDATES.md](docs/OFFLINE_UPDATES.md). Missing signing configuration is a
 release failure. Check the exact uploaded package on the spare card, including
 failed health/rollback and reboot recovery. Do not configure secrets or publish
-from an untrusted PR. No signing secrets were created or configured by this task.
+from an untrusted PR.

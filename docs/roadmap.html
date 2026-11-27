@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="The next field tests for LogFalcon on the Pi Zero W and Zero 2 W, from collecting a flight log to recovering an interrupted update.">
+  <title>LogFalcon — Roadmap</title>
+  <meta name="theme-color" content="#14221d">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="guide.css">
+</head>
+<body>
+  <nav aria-label="Main navigation">
+    <a class="brand" href="index.html"><img src="assets/logfalcon-mark.svg" width="28" height="28" alt="">LogFalcon</a>
+    <div class="nav-right">
+      <a class="nav-link" href="guide.html">Guide</a>
+      <a class="nav-link" href="roadmap.html" aria-current="page">Roadmap</a>
+      <a class="nav-link" href="https://github.com/proeugene/logfalcon">GitHub ↗</a>
+    </div>
+  </nav>
+  <main>
+    <header class="guide-header">
+      <h1>Roadmap</h1>
+      <p class="hero-sub">The next milestone is a field test on both Pi models. Each result will identify the SD image, flight controller and Betaflight version so another pilot can repeat it.</p>
+    </header>
+    <section class="section">
+      <h2 class="section-label">Collect a flight on each Pi</h2>
+      <div class="compatibility-copy">
+        <p>Flash the same image to spare cards for a Zero W and a Zero 2 W. With erase and cleanup off, copy a real recording twice, unplug the controller and download the file over the hotspot. Check its checksum and open it in Betaflight’s Blackbox Viewer.</p>
+        <p>Interrupt a separate copy and compare the dashboard and activity LED with the saved result. Check that the hotspot stays available after unplugging and that optional idle shutdown leaves an active copy alone.</p>
+      </div>
+    </section>
+    <section class="section">
+      <h2 class="section-label">Recover an offline update</h2>
+      <div class="compatibility-copy">
+        <p>Install a signed update on a spare card, reboot and check the version, Wi-Fi settings and saved recordings. Then interrupt an installation and check that the Pi can recover the previous version. Check the documented upgrade path for each supported older Go image in the <a href="https://github.com/proeugene/logfalcon/blob/main/docs/OFFLINE_UPDATES.md#direct-upgrade-evidence-and-limits">upgrade table</a>.</p>
+      </div>
+    </section>
+    <section class="section">
+      <h2 class="section-label">Hand the kit to another pilot</h2>
+      <div class="compatibility-copy">
+        <p>Give an independent pilot the <a href="guide.html">setup guide</a> and a spare card. Can they find their latest flight on a phone, open the recording and apply an offline update without coaching? Record where they get stuck.</p>
+        <p>Completed runs belong in the <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md">test record</a>. The <a href="https://github.com/proeugene/logfalcon/blob/main/RELEASE_CHECKLIST.md">release checklist</a> covers the remaining maintainer checks.</p>
+      </div>
+    </section>
+    <section class="section">
+      <h2 class="section-label">What would change controller support?</h2>
+      <div class="compatibility-copy">
+        <p>Betaflight on internal SPI flash is the focus. Before adding iNav, the copier would need to handle its flash read format and produce a recording that opens in the Viewer on real hardware. There is no scheduled iNav release.</p>
+      </div>
+    </section>
+  </main>
+  <footer><a href="index.html">LogFalcon</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon/releases">GitHub Releases</a><span class="footer-sep">·</span><a href="https://github.com/proeugene/logfalcon/issues">Report a problem</a></footer>
+</body>
+</html>

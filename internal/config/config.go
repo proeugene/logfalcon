@@ -161,7 +161,7 @@ func (c *Config) Validate() error {
 		}
 	}
 	if c.LEDBackend != "sysfs" && c.LEDBackend != "none" {
-		return fmt.Errorf("led_backend must be sysfs or none; gpio is not implemented")
+		return fmt.Errorf("led_backend must be sysfs or none")
 	}
 	return nil
 }

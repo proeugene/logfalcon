@@ -1,9 +1,9 @@
 # LogFalcon — Configuration
 # Copy to /etc/logfalcon/logfalcon.toml on the Pi
 
-# Serial port to connect to the FC
+# Serial connection to the flight controller
 serial_baud = 921600
-serial_port = ""           # empty = auto-detect /dev/ttyACM*
+serial_port = ""           # udev passes the device to --port; specify --port for manual copies
 serial_timeout = 5.0
 
 # Pi SD card storage path
@@ -12,14 +12,14 @@ min_free_space_mb = 200
 storage_pressure_cleanup = false # opt in only after downloading/retaining your saved logs
 
 # Sync behaviour
-erase_after_sync = false   # keep false during evaluation; erasure requires explicit opt-in
+erase_after_sync = false   # keep the original recording on the controller
 flash_chunk_size = 4096
 erase_timeout_sec = 120
 flash_read_compression = false  # must remain false; compressed transfers are unsupported
 
 # LED
 led_backend = "sysfs"      # built-in ACT LED, driven by the dedicated status service
-led_gpio_pin = 17
+led_gpio_pin = 17          # reserved; the built-in ACT LED uses sysfs
 
 # Wi-Fi hotspot and web server
 hotspot_ssid = "LogFalcon"

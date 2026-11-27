@@ -17,7 +17,7 @@ type versionBound struct {
 // format to include an explicit dataSize + compressionType header.  Firmware
 // older than 4.0 uses a different wire format that would corrupt log data.
 //
-// iNav remains experimental and copying is disabled before transfer.
+// Detect rejects iNav before any flash transfer.
 var variantVersions = map[string]versionBound{
 	"BTFL": {MinMajor: 1, MinMinor: 41, MaxMajor: 1, MaxMinor: 48},
 	"INAV": {MinMajor: 1, MinMinor: 40, MaxMajor: 1, MaxMinor: 46},
@@ -64,8 +64,8 @@ func (e *VersionTooNewError) Error() string {
 		fw = fmt.Sprintf(" (%s)", e.FirmwareVersion)
 	}
 	return fmt.Sprintf(
-		"%s%s uses MSP API %d.%d which is newer than protocol-reviewed (highest reviewed: API %d.%d). "+
-			"Sync will proceed — if anything looks wrong, please report your firmware version.",
+		"%s%s uses MSP API %d.%d which is newer than the highest API reviewed for LogFalcon (%d.%d). "+
+			"Copying will continue. If it fails, include your firmware version in the report.",
 		name, fw, e.Major, e.Minor, e.MaxMajor, e.MaxMinor,
 	)
 }

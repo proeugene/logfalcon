@@ -26,18 +26,18 @@
     </aside>
     <main class="guide-content">
       <section id="setup" class="doc-section">
-        <h2 class="section-label">Setup for evaluation</h2>
-        <div class="info-box"><p><strong>Before you connect a controller</strong>, check that erasure and storage cleanup are off. A pilot opened a recording from an earlier build. The current revision still needs a first-transfer check on each Pi model. <a href="#compatibility">Compatibility and field evidence</a></p></div>
+        <h2 class="section-label">Set up the Pi</h2>
+        <div class="info-box"><p><strong>For your first copy,</strong> keep automatic erasure and storage cleanup switched off. This keeps the original on the controller and your saved recordings on the Pi. <a href="#copy-settings">Check the two settings</a>.</p></div>
         <h3>Hardware</h3>
         <p>You need a Pi Zero W or Zero 2 W, a 16 GB+ microSD card, a suitable 5 V USB supply, an OTG adapter and a controller data cable. The primary development target is Betaflight logging to internal SPI flash.</p>
         <h3>Flash and boot</h3>
         <ol class="numbered-list">
-          <li><span>Start with an image of the revision you intend to test. As of 27 November 2026, the <a href="https://github.com/proeugene/logfalcon/releases">published images</a> predate this revision’s copy safeguards. To evaluate those safeguards, <a href="#build-image">build the image from this checkout</a> and verify it against <code>checksums.txt</code>.</span></li>
+          <li><span>Build the SD image from this checkout and verify it against <code>checksums.txt</code>. As of 27 November 2026, there’s no published SD image for this revision. <a href="#build-image">Image build instructions</a> · <a href="https://github.com/proeugene/logfalcon/releases">Releases</a></span></li>
           <li><span>Flash it using Raspberry Pi Imager or Etcher. On the boot partition, optionally edit <code>logfalcon-config.txt</code> to set <code>SSID</code>, <code>PASSWORD</code> and <code>COUNTRY_CODE</code> (for example, <code>GB</code> in the UK).</span></li>
           <li><span>Insert the card, power the Pi through <strong>PWR IN</strong> and wait for its hotspot to appear.</span></li>
           <li><span>On a fresh installation, join the Wi-Fi network named <strong>LogFalcon-</strong> followed by the device's 12-character ID, or your configured network name. Upgrades keep the existing name. The temporary default password is <code>fpvpilot</code>. Open <a href="http://log.falcon">http://log.falcon</a> or <a href="http://192.168.4.1">http://192.168.4.1</a>.</span></li>
         </ol>
-        <h3>Before connecting a controller</h3>
+        <h3 id="copy-settings">Before connecting a controller</h3>
         <p>Connect over SSH with <code>ssh pi@192.168.4.1</code>. In <code>/etc/logfalcon/logfalcon.toml</code>, confirm both settings have the following values.</p>
         <pre><code>erase_after_sync = false
 storage_pressure_cleanup = false</code></pre>
@@ -71,7 +71,7 @@ journalctl -u 'logfalcon@*' -f</code></pre>
           <li><strong>iNav</strong> copying is disabled pending validation of its flash data format.</li>
           <li><strong>Unsupported:</strong> controller-side SD card logs and ArduPilot.</li>
           <li><strong>Dashboard:</strong> web and sync services share an atomic runtime status file. Interrupted or unreadable status does not confirm completion.</li>
-          <li><strong>Hardware evidence.</strong> On an earlier build a pilot opened an 8 MiB DARKSTAR20 recording and reported losing Wi-Fi after unplugging the controller. The current image still needs that sequence tested on the Pi Zero W and Zero 2 W. <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md#first-field-report--11-november-2026">Read the field report</a>.</li>
+          <li><strong>Pi Zero W and Zero 2 W.</strong> The remaining field check for this revision is to copy a recording, unplug the controller and download the file over Wi-Fi on each model. <a href="https://github.com/proeugene/logfalcon/blob/main/DEVELOPMENT_TESTING.md">Hardware test record</a>.</li>
         </ul>
         <p>Report findings through <a href="https://github.com/proeugene/logfalcon/issues">GitHub Issues</a>. LogFalcon is independent of the Betaflight and iNav projects.</p>
       </section>

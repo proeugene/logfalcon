@@ -1,8 +1,8 @@
-# LogFalcon
+# <img src="docs/assets/favicon.svg" width="32" height="32" alt=""> LogFalcon
 
-**Collect Betaflight blackbox logs between flights, without a laptop.**
+**Collect blackbox logs from FPV drones running Betaflight, without a laptop.**
 
-Plug your flight controller into a Raspberry Pi over USB. LogFalcon copies the recording from the controller’s internal flash to the Pi’s microSD card. Join the Pi’s Wi-Fi on your phone to download the `.bbl`. The original stays on the quad by default.
+Between flights, plug your flight controller into a Raspberry Pi over USB. LogFalcon copies the recording from the controller’s internal flash to the Pi’s microSD card. Join the Pi’s Wi-Fi on your phone to download the `.bbl`. The original stays on the quad by default.
 
 [Set up a Pi](#try-it-on-a-pi) · [Inside LogFalcon](#inside-logfalcon) · [Pilot guide](https://proeugene.github.io/logfalcon/guide.html)
 

@@ -42,7 +42,7 @@ var statusPresentations = map[string]statusPresentation{
 	"syncing":     {"Copying logs", "Copying your controller’s logs to the appliance. Keep it connected until completion.", "Copying logs", "active", 2, true},
 	"verifying":   {"Checking saved copy", "Comparing the received bytes with the saved file. Keep the controller connected.", "Checking saved copy", "active", 3, true},
 	"erasing":     {"Erasing controller", "Your copy is saved. Keep the controller connected while its requested erase finishes.", "Erase in progress", "warning", 3, true},
-	"complete":    {"Copy completed.", "The recording is ready to download.", "Copy completed", "complete", 4, false},
+	"complete":    {"Copy completed.", "The recording is ready to download.", "Latest transfer", "complete", 4, false},
 	"empty":       {"No logs to copy", "The controller reports empty flash. Record a flight, then connect it again.", "Controller flash empty", "waiting", 0, false},
 	"interrupted": {"Copy interrupted", "The transfer was interrupted. Reconnect your controller to start a new copy. Partial evidence is retained.", "Copy interrupted", "warning", 0, false},
 	"error":       {"Copy failed", "Completion is not confirmed. Preserve the controller’s data and check the transfer details below.", "Copy failed", "error", 0, false},
@@ -86,8 +86,30 @@ func RenderIndex(p IndexParams) string {
 		device = "LogFalcon"
 	}
 	body := pageIntro("", "Recordings", "")
-	body += fmt.Sprintf(`<section id="transfer-hero" class="panel hero" data-tone="%s" aria-labelledby="transfer-title"><div class="hero-main"><div class="hero-copy"><span class="hero-badge"><span class="dot"></span><span id="hero-label">%s</span></span><h2 id="transfer-title" aria-live="polite">%s</h2><p class="hero-description" id="hero-description">%s</p><a id="hero-action" class="btn primary" href="%s">%s</a>%s<span id="keep-connected" class="badge" hidden>Keep controller connected</span></div><div class="hero-art" aria-hidden="true"><span class="orbit"></span>%s</div></div><div id="copy-progress" class="copy-progress"%s><div class="progress-numbers"><strong class="progress-number" id="progress-number">%d%%</strong><span class="progress-meta" id="progress-meta">Keep the controller connected</span></div><div class="track"><div id="progress-fill" class="fill" role="progressbar" aria-label="Copy progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" style="width:%d%%"></div></div></div><ol class="steps" id="copy-steps" aria-label="Transfer stages">%s</ol></section>`,
-		esc(view.Tone), esc(view.Label), esc(view.Title), esc(view.Body), esc(view.ActionHref), esc(view.ActionLabel), capturePanelHTML(p.Capture), falconMark, hidden, boundedPercent(p.Status.Progress), boundedPercent(p.Status.Progress), boundedPercent(p.Status.Progress), steps.String())
+	actionHidden, keepHidden := "", " hidden"
+	if view.Active {
+		actionHidden, keepHidden = " hidden", ""
+	}
+	progressHint := "Keep the controller connected"
+	if p.Status.State == "complete" {
+		progressHint = "Saved copy confirmed"
+	}
+	pct := boundedPercent(p.Status.Progress)
+	body += fmt.Sprintf(`<section id="transfer-hero" class="panel hero" data-tone="%s" aria-labelledby="transfer-title">
+  <span class="hero-badge"><span class="dot" aria-hidden="true"></span><span id="hero-label">%s</span></span>
+  <h2 id="transfer-title" aria-live="polite">%s</h2>
+  <p class="hero-description" id="hero-description">%s</p>
+  <div id="copy-progress" class="copy-progress"%s>
+    <div class="progress-numbers"><strong id="progress-number">%d%%</strong><span id="progress-meta">%s</span></div>
+    <div class="track"><div id="progress-fill" class="fill" role="progressbar" aria-label="Copy progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" style="width:%d%%"></div></div>
+  </div>
+  <a id="hero-action" class="btn primary" href="%s"%s>%s</a>
+  <span id="keep-connected" class="badge"%s>Keep controller connected</span>
+  %s
+  <ol class="steps" id="copy-steps" aria-label="Transfer stages">%s</ol>
+</section>`,
+		esc(view.Tone), esc(view.Label), esc(view.Title), esc(view.Body),
+		hidden, pct, progressHint, pct, pct, esc(view.ActionHref), actionHidden, esc(view.ActionLabel), keepHidden, capturePanelHTML(p.Capture), steps.String())
 	body += `<div class="warning-card" id="transfer-warning" role="status"` + func() string {
 		if p.Status.Warning == "" {
 			return " hidden"

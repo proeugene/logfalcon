@@ -25,6 +25,17 @@ die()   { error "$*"; exit 1; }
 # --- Preflight checks --------------------------------------------------------
 [[ $EUID -eq 0 ]] || die "This script must be run as root (use sudo)."
 
+# The executable and sync unit survive a lost configuration directory.
+UPGRADING=0
+if [[ -e "$INSTALL_DIR/logfalcon" || -e /etc/systemd/system/logfalcon@.service ||
+      -f "$CONFIG_DIR/logfalcon.toml" || -f "$CONFIG_DIR/hostapd.conf" ||
+      -f /etc/hostapd/hostapd.conf || -L /etc/hostapd/hostapd.conf ]]; then
+    UPGRADING=1
+    if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]] || [[ ! -f "$CONFIG_DIR/hostapd.conf" && ! -f /etc/hostapd/hostapd.conf ]]; then
+        die "Incomplete existing configuration. Restore the application/hotspot files before upgrading; no defaults applied."
+    fi
+fi
+
 command -v curl  >/dev/null 2>&1 || command -v wget >/dev/null 2>&1 || die "curl or wget is required."
 command -v systemctl >/dev/null 2>&1 || die "systemd is required."
 
@@ -106,23 +117,14 @@ release_commit=$(sed -n '2p' "$ASSET_DIR/logfalcon-build.txt")
 [[ "$("$BINARY_TMP" --version)" == "logfalcon $VERSION ($release_commit)" ]] || die "Binary and integration assets refer to different builds."
 info "Verified release $VERSION at $release_commit."
 
-# Establish upgrade state before generating or writing any defaults.
-UPGRADING=0
-if [[ -f "$CONFIG_DIR/logfalcon.toml" || -f "$CONFIG_DIR/hostapd.conf" || -f /etc/hostapd/hostapd.conf ]]; then
-    UPGRADING=1
-    if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]] || [[ ! -f "$CONFIG_DIR/hostapd.conf" && ! -f /etc/hostapd/hostapd.conf ]]; then
-        echo "Incomplete existing configuration. Restore the application/hotspot files before upgrading; no defaults applied." >&2
-        exit 1
-    fi
-fi
 if [[ $UPGRADING -eq 1 ]]; then
  [[ -x "$INSTALL_DIR/logfalcon" ]] || { echo "Legacy runtime has no recoverable Go binary; use the documented migration/recovery route." >&2; exit 1; }
  "$BINARY_TMP" --check-upgrade-config --config "$CONFIG_DIR/logfalcon.toml"
  mkdir -p /run/logfalcon
  exec 9>/run/logfalcon/transfer.lock
  chown bbsyncer:bbsyncer /run/logfalcon/transfer.lock
- [[ ! -e /run/logfalcon/shutdown.pending ]] || die "Shutdown pending; retry after boot."
  flock -n 9 || die "Copy or shutdown is active; retry bootstrap when idle."
+ [[ ! -e /run/logfalcon/shutdown.pending ]] || die "Shutdown pending; retry after boot."
 fi
 # --- Install packages
 info "Installing required packages..."
@@ -204,9 +206,11 @@ udevadm control --reload-rules
 mkdir -p /etc/systemd/journald.conf.d /var/log/journal /var/lib/logfalcon
 install -m 644 "$ASSET_DIR/journald.conf" /etc/systemd/journald.conf.d/logfalcon.conf
 
-# Only permit the one restart verb needed by the settings page.
+# Install the fixed settings/shutdown policy at the canonical destination.
 mkdir -p /etc/polkit-1/rules.d
 install -m 644 "$ASSET_DIR/50-logfalcon.rules" /etc/polkit-1/rules.d/50-logfalcon-hostapd.rules
+# Earlier signed updaters used a second filename; do not retain its permissions.
+rm -f /etc/polkit-1/rules.d/50-logfalcon.rules
 
 # --- Configure Wi-Fi hotspot -------------------------------------------------
 info "Configuring Wi-Fi hotspot..."

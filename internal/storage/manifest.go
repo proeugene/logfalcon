@@ -2,12 +2,14 @@ package storage
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -39,6 +41,7 @@ type Manifest struct {
 	EraseAttempted         bool               `json:"erase_attempted"`
 	EraseCompleted         bool               `json:"erase_completed"`
 	Timing                 map[string]float64 `json:"timing,omitempty"`
+	Recordings             []RecordingHeader  `json:"recordings,omitempty"`
 }
 
 // ManifestFC holds flight-controller metadata inside a manifest.
@@ -107,18 +110,16 @@ func atomicJSONWrite(root *os.Root, name string, data any) error {
 	return d.Sync()
 }
 
-// MakeSessionDir creates a timestamped session directory.
-// Layout: <root>/fc_<VARIANT>_uid-<uid8>/<YYYY-MM-DD_HHMMSS>/
-func MakeSessionDir(root string, info *FCInfo) (string, error) {
-	uidShort := "unknown"
-	if info.UID != "" && info.UID != "unknown" {
-		if len(info.UID) > 8 {
-			uidShort = info.UID[:8]
-		} else {
-			uidShort = info.UID
-		}
+func controllerDirectory(variant, uid string) string {
+	if uid == "" {
+		uid = "unknown"
 	}
-	name := fmt.Sprintf("fc_%s_uid-%s", info.Variant, uidShort)
+	return fmt.Sprintf("fc_%s_uid-%s", variant, uid[:min(len(uid), 8)])
+}
+
+// MakeSessionDir creates a timestamped session directory under its controller.
+func MakeSessionDir(root string, info *FCInfo) (string, error) {
+	name := controllerDirectory(info.Variant, info.UID)
 	if filepath.Base(name) != name || strings.ContainsAny(name, `/\:`) {
 		return "", fmt.Errorf("invalid controller directory")
 	}
@@ -164,7 +165,7 @@ func MakeSessionDir(root string, info *FCInfo) (string, error) {
 
 // WriteManifest writes manifest.json to the session directory.
 func WriteManifest(storagePath, dir string, info *FCInfo, sha256hex string, usedSize int64,
-	eraseCompleted, eraseAttempted bool, timing map[string]float64) error {
+	eraseCompleted, eraseAttempted bool, timing map[string]float64, recordings ...[]RecordingHeader) error {
 
 	m := Manifest{
 		Version:    1,
@@ -183,6 +184,15 @@ func WriteManifest(storagePath, dir string, info *FCInfo, sha256hex string, used
 		EraseAttempted: eraseAttempted,
 		EraseCompleted: eraseCompleted,
 		Timing:         timing,
+	}
+	if len(recordings) > 0 {
+		// Preserve the original manifest footprint. Channel evidence belongs
+		// to the independently published, advisory capture check.
+		m.Recordings = make([]RecordingHeader, len(recordings[0]))
+		for i, r := range recordings[0] {
+			r.Gyro = nil
+			m.Recordings[i] = r
+		}
 	}
 	session, err := openSessionPath(storagePath, dir)
 	if err != nil {
@@ -300,48 +310,19 @@ func CleanupOldestSessions(root string, requiredFreeBytes int64) ([]string, erro
 	if requiredFreeBytes <= 0 {
 		return nil, nil
 	}
-	if _, err := os.Stat(root); os.IsNotExist(err) {
-		return nil, nil
-	}
-
-	// Collect all session directories, sorted oldest first.
-	type candidate struct {
-		sessionID  string
-		sessionDir string
-	}
-	var candidates []candidate
-
-	fcEntries, err := os.ReadDir(root)
+	sessions, err := ListSessions(root)
 	if err != nil {
-		return nil, fmt.Errorf("read root dir: %w", err)
+		return nil, err
 	}
-	for _, fcEntry := range fcEntries {
-		if !fcEntry.IsDir() {
-			continue
-		}
-		fcDirPath := filepath.Join(root, fcEntry.Name())
-		sessEntries, err := os.ReadDir(fcDirPath)
-		if err != nil {
-			continue
-		}
-		for _, sessEntry := range sessEntries {
-			if !sessEntry.IsDir() {
-				continue
-			}
-			candidates = append(candidates, candidate{
-				sessionID:  fmt.Sprintf("%s/%s", fcEntry.Name(), sessEntry.Name()),
-				sessionDir: filepath.Join(fcDirPath, sessEntry.Name()),
-			})
-		}
-	}
-
-	// Sort oldest first (ascending by session directory name).
-	sort.Slice(candidates, func(i, j int) bool {
-		return filepath.Base(candidates[i].sessionDir) < filepath.Base(candidates[j].sessionDir)
-	})
-
 	var deleted []string
-	for _, c := range candidates {
+	for _, s := range slices.Backward(sessions) {
+		// Failed copies and unrelated directories may also live on this volume.
+		// ListSessions sets BBLPath only when the file matches the recorded length.
+		m := s.Manifest
+		if s.BBLPath == nil || m.Version != 1 || m.File.Bytes <= 0 || m.File.Name != RawFlashFilename ||
+			!lowerHex(m.File.SHA256, sha256.Size) || s.FCDir != controllerDirectory(m.FC.Variant, m.FC.UID) {
+			continue
+		}
 		free, err := util.FreeBytes(root)
 		if err != nil {
 			return deleted, fmt.Errorf("check free space: %w", err)
@@ -349,11 +330,11 @@ func CleanupOldestSessions(root string, requiredFreeBytes int64) ([]string, erro
 		if free >= requiredFreeBytes {
 			break
 		}
-		if err := DeleteSession(root, c.sessionID); err != nil {
-			return deleted, fmt.Errorf("remove session %s: %w", c.sessionID, err)
+		if err := DeleteSession(root, s.SessionID); err != nil {
+			return deleted, fmt.Errorf("remove session %s: %w", s.SessionID, err)
 		}
 		// Leave the harmless empty parent; deletion never needs an unrooted path.
-		deleted = append(deleted, c.sessionID)
+		deleted = append(deleted, s.SessionID)
 	}
 	return deleted, nil
 }

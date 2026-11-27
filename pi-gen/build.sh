@@ -5,7 +5,7 @@ set -euo pipefail
 
 PIGEN_COMMIT=1c2abf50924d5bfee3527657af74ddfb1da52904
 PISHRINK_COMMIT=5f358d03eed4b7334657ee93867826a2b42f112a
-GO_IMAGE=golang:1.27.3-bookworm@sha256:5c3e9b43cfd3bb95c7937462e29d87ada57b481a96fa23ad0eb61778d7a00110
+GO_IMAGE=golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=pi-gen/cache.sh
@@ -250,7 +250,7 @@ run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
 output="$SCRIPT_DIR/deploy/$run_id"
 container="logfalcon-image-$run_id"
 volume="$container"
-builder=logfalcon-image-builder:go1.27.3
+builder=logfalcon-image-builder:go1.27.4
 mkdir -p "$output"
 tooling=$(mktemp -d)
 volume_created=0

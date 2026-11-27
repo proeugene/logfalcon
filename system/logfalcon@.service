@@ -7,14 +7,13 @@ Description=LogFalcon (%I)
 Documentation=https://github.com/proeugene/logfalcon
 # Stop if the device disappears mid-sync
 BindsTo=dev-%i.device
-After=dev-%i.device local-fs.target logfalcon-diagnostics.service
+After=dev-%i.device local-fs.target
 Requires=logfalcon-runtime.service logfalcon-config-apply.service
 After=logfalcon-runtime.service logfalcon-config-apply.service
 
 [Service]
 Type=oneshot
-# Wait for USB enumeration to stabilise
-ExecStartPre=/bin/sleep 3
+# The application probes USB/MSP readiness with bounded retries; no fixed delay.
 
 User=bbsyncer
 Group=dialout

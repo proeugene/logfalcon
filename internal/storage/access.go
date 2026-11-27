@@ -1,11 +1,32 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
+
+var ErrSessionBusy = errors.New("session is in use")
+
+// Both the collector and deletion hold the directory lock. It survives the
+// partial-file rename and manifest replacements, and is released on exit.
+func lockSessionDirectory(session *os.Root) (*os.File, error) {
+	dir, err := session.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(dir.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = dir.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, ErrSessionBusy
+		}
+		return nil, err
+	}
+	return dir, nil
+}
 
 // SessionRoot pins directory handles inside storage. No session path component
 // may be a symlink. os.Root also prevents escapes if paths change after checking.
@@ -69,7 +90,12 @@ func DeleteSession(storagePath, sessionID string) error {
 	if err != nil {
 		return err
 	}
-	_ = session.Close()
+	defer func() { _ = session.Close() }()
+	dir, err := lockSessionDirectory(session)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
 	root, err := os.OpenRoot(storagePath)
 	if err != nil {
 		return err

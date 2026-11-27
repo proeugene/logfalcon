@@ -42,7 +42,7 @@ find /usr/share/locale -mindepth 1 -maxdepth 1 \
     -exec rm -rf {} + 2>/dev/null || true
 
 # ---- 5. Boot speed optimizations -------------------------------------------
-# Disable Bluetooth (unused — saves ~5s)
+# Disable unused Bluetooth. Boot-time benefit requires measurement on each Pi.
 if [ -f /boot/firmware/config.txt ]; then
     grep -q 'dtoverlay=disable-bt' /boot/firmware/config.txt 2>/dev/null || \
         echo -e '\n# LogFalcon: disable Bluetooth for faster boot\ndtoverlay=disable-bt\ndisable_splash=1\nboot_delay=0' >> /boot/firmware/config.txt
@@ -51,7 +51,7 @@ elif [ -f /boot/config.txt ]; then
         echo -e '\n# LogFalcon: disable Bluetooth for faster boot\ndtoverlay=disable-bt\ndisable_splash=1\nboot_delay=0' >> /boot/config.txt
 fi
 
-# Quiet kernel boot (reduces console output, saves ~2-3s)
+# Quiet kernel boot reduces console output; no measured timing saving is claimed.
 for cmdfile in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
     if [ -f "$cmdfile" ]; then
         grep -q 'quiet' "$cmdfile" || \

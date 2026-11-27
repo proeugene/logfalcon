@@ -21,7 +21,8 @@ type FCInfo struct {
 
 // DetectionError indicates a generic MSP identification failure.
 type DetectionError struct {
-	Message string
+	Message    string
+	ReasonCode string
 }
 
 func (e *DetectionError) Error() string { return e.Message }
@@ -40,13 +41,6 @@ type SDCardError struct{}
 
 func (e *SDCardError) Error() string {
 	return "FC uses SD card for blackbox — remove the FC SD card and read it directly"
-}
-
-// BlackboxEmptyError indicates the flash is already empty.
-type BlackboxEmptyError struct{}
-
-func (e *BlackboxEmptyError) Error() string {
-	return "flash is already empty — nothing to sync"
 }
 
 // MSPClient is the interface the detector needs from the MSP client.
@@ -93,7 +87,7 @@ func Detect(client MSPClient) (*FCInfo, error) {
 	// Its current DATAFLASH_SUMMARY wire layout has not been validated here.
 	// Do not guess storage state, particularly when automatic erase is enabled.
 	if variant == msp.INAVVariant {
-		return nil, &DetectionError{Message: "iNav — Experimental; copying currently disabled"}
+		return nil, &DetectionError{Message: "iNav — Experimental; copying currently disabled", ReasonCode: "unsupported_controller"}
 	}
 
 	// 3. Firmware version string (best effort — some older FC builds don't support this)
@@ -138,7 +132,7 @@ func Detect(client MSPClient) (*FCInfo, error) {
 		return nil, &SDCardError{}
 	}
 	if bbDevice != msp.BlackboxDeviceFlash {
-		return nil, &DetectionError{Message: "Blackbox must be configured to use internal flash"}
+		return nil, &DetectionError{Message: "Blackbox must be configured to use internal flash", ReasonCode: "blackbox_not_flash"}
 	}
 
 	return &FCInfo{

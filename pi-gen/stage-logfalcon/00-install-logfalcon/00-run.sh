@@ -43,9 +43,6 @@ install -m 644 "${REPO_ROOT}/system/journald.conf" "${ROOTFS_DIR}/etc/systemd/jo
 # Copy boot LED heartbeat script
 install -m 755 "${REPO_ROOT}/system/logfalcon-boot-led.sh" "${ROOTFS_DIR}/opt/logfalcon/boot-led.sh"
 
-# Copy ready LED script
-install -m 755 "${REPO_ROOT}/system/logfalcon-ready-led.sh" "${ROOTFS_DIR}/opt/logfalcon/ready-led.sh"
-
 # Copy config-apply script (replaces firstboot.sh)
 install -m 755 "${REPO_ROOT}/system/config-apply.sh" "${ROOTFS_DIR}/opt/logfalcon/config-apply.sh"
 

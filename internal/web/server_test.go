@@ -165,6 +165,32 @@ func TestDeleteWithoutCSRF(t *testing.T) {
 	}
 }
 
+func TestDeleteConflictsOnlyWithTheActiveSession(t *testing.T) {
+	s, root := newTestServer(t)
+	for _, session := range []string{"active", "earlier"} {
+		if err := os.MkdirAll(filepath.Join(root, "fc_test", session), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writer, err := storage.NewSessionWriter(root, filepath.Join(root, "fc_test", "active"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.KeepPartial(); writer.Release() }()
+	for _, tc := range []struct {
+		session string
+		want    int
+	}{{"active", http.StatusConflict}, {"earlier", http.StatusOK}} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("DELETE", "/sessions/fc_test/"+tc.session, nil)
+		r.Header.Set("X-CSRF-Token", s.csrfToken)
+		s.ServeHTTP(w, r)
+		if w.Code != tc.want {
+			t.Errorf("delete %s: got %d, want %d", tc.session, w.Code, tc.want)
+		}
+	}
+}
+
 // ---------- additional coverage ----------
 
 func TestDownloadValidFile(t *testing.T) {

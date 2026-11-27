@@ -1,7 +1,6 @@
 package sync
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -12,6 +11,14 @@ func TestUpdateRecoveryCheckedUnderTransferLock(t *testing.T) {
 	for _, state := range []string{`{"Phase":"activating"}`, `{"Phase":"restarting"}`, `{"Phase":"unknown"}`, `{broken`} {
 		t.Run(state, func(t *testing.T) {
 			o, peer := transferFixture(t, 1, "")
+			if err := BeginTransfer("previous"); err != nil {
+				t.Fatal(err)
+			}
+			if err := setSavedCopy(SavedCopy{SessionID: "controller/previous", Bytes: 1}); err != nil {
+				t.Fatal(err)
+			}
+			SetStatus("complete", 100, "Previous copy saved.")
+			previousID := GetStatus().TransferID
 			checked := false
 			o.readUpdateState = func(path string) ([]byte, error) {
 				checked = true
@@ -25,8 +32,8 @@ func TestUpdateRecoveryCheckedUnderTransferLock(t *testing.T) {
 			if got := o.Run("fake"); got != ResultError || !checked || peer.requests != 0 {
 				t.Fatal("pending recovery allowed serial access")
 			}
-			if _, err := os.Stat(o.Config.StatusPath); !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("pending recovery published a transfer")
+			if s := GetStatus(); s.State != "error" || s.ReasonCode != "update_recovery" || s.TransferID == previousID || s.SavedCopy != nil {
+				t.Errorf("blocked connection displayed stale or ambiguous status: %+v", s)
 			}
 			lock, err := acquireTransferLock(filepath.Dir(o.Config.StatusPath))
 			if err != nil {

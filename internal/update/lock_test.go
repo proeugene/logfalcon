@@ -20,6 +20,12 @@ func TestInstallerRejectsHardLinkedLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	i := Installer{RuntimeDir: runtime, StateDir: filepath.Join(dir, "state"), Inbox: filepath.Join(dir, "inbox")}
+	if err := os.Mkdir(i.Inbox, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(i.Inbox, "request"), []byte("install"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := i.Run(); err == nil {
 		t.Fatal("hard-linked lock accepted")
 	}

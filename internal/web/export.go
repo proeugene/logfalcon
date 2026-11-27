@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/proeugene/logfalcon/internal/storage"
 )
@@ -111,7 +110,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", `attachment; filename="logfalcon-recordings.zip"`)
 	// Stream without a temporary archive or a whole-file buffer. Renew the write
 	// deadline so a large download can run longer than the server's usual limit.
-	zw := zip.NewWriter(&exportWriter{w: w, controller: http.NewResponseController(w)})
+	zw := zip.NewWriter(newDownloadResponse(w))
 	buf := make([]byte, 64<<10)
 	for _, e := range entries {
 		entry, err := zw.CreateHeader(&zip.FileHeader{Name: "LogFalcon/" + e.name, Method: zip.Store})
@@ -141,18 +140,4 @@ func abortExport(err error) {
 	slog.Warn("recording ZIP interrupted", "error", err)
 	// Do not turn an incomplete transfer into a valid, apparently complete ZIP.
 	panic(http.ErrAbortHandler)
-}
-
-type exportWriter struct {
-	w          http.ResponseWriter
-	controller *http.ResponseController
-	renewed    time.Time
-}
-
-func (w *exportWriter) Write(b []byte) (int, error) {
-	if time.Since(w.renewed) > 10*time.Second {
-		_ = w.controller.SetWriteDeadline(time.Now().Add(time.Minute))
-		w.renewed = time.Now()
-	}
-	return w.w.Write(b)
 }

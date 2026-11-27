@@ -2,7 +2,7 @@ name: Go CI
 
 on:
   push:
-    branches: [main, go-rewrite]
+    branches: ['**']
   pull_request:
     branches: [main]
 
@@ -18,7 +18,7 @@ jobs:
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.27.3"
+          go-version: "1.27.4"
 
       - uses: golangci/golangci-lint-action@db9de0fc1a667e1a49d2291a1a042dff081d78f6 # v9
         with:
@@ -32,7 +32,7 @@ jobs:
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.27.3"
+          go-version: "1.27.4"
 
       - name: Run tests with race detector
         run: go test -race -coverprofile=cover.out -covermode=atomic ./...
@@ -43,8 +43,11 @@ jobs:
       - name: Bounded decoder fuzzing
         run: go test ./internal/msp -run='^$' -fuzz=FuzzFrameDecoder -fuzztime=20s -parallel=2
 
-      - name: Linux integration tests
-        run: go test -v ./internal/integration ./internal/settings
+      - name: Check updater and service-account permissions
+        working-directory: internal/update
+        run: |
+          go test -c -o "$RUNNER_TEMP/logfalcon-update.test" .
+          sudo "$RUNNER_TEMP/logfalcon-update.test" -test.run '^TestWorkerAndServiceAccountShareLock$' -test.v
 
       - name: ShellCheck
         run: shellcheck install.sh scripts/install.sh scripts/check-image-size.sh system/config-apply.sh system/wifi-init.sh pi-gen/build.sh pi-gen/cache.sh
@@ -75,7 +78,7 @@ jobs:
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          go-version: "1.27.3"
+          go-version: "1.27.4"
 
       - name: Build
         env:

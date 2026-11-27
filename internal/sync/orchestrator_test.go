@@ -70,18 +70,6 @@ func TestStatusThreadSafety(t *testing.T) {
 	}
 }
 
-func TestAutoDetectPortNone(t *testing.T) {
-	// On non-Linux (or when no /dev/ttyACM* exists) this should return "".
-	// This test is inherently environment-dependent but validates the
-	// function doesn't panic and returns a sensible default.
-	port := AutoDetectPort()
-	// We can't guarantee no ttyACM* exists in CI, so just verify it
-	// returns either "" or a valid path starting with /dev/ttyACM.
-	if port != "" && len(port) < len("/dev/ttyACM0") {
-		t.Errorf("AutoDetectPort() = %q, expected empty or valid /dev/ttyACM* path", port)
-	}
-}
-
 func TestSyncResultConstants(t *testing.T) {
 	// Verify the iota-assigned values match expectations.
 	if ResultSuccess != 0 {

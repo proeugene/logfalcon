@@ -61,7 +61,7 @@ func init() {
 	for name, dest := range map[string]string{"config-apply.sh": "config-apply.sh", "wifi-init.sh": "wifi-init.sh", "logfalcon-boot-led.sh": "boot-led.sh"} {
 		Destinations["system/"+name] = "/opt/logfalcon/" + dest
 	}
-	Destinations["system/50-logfalcon.rules"] = "/etc/polkit-1/rules.d/50-logfalcon.rules"
+	Destinations["system/50-logfalcon.rules"] = "/etc/polkit-1/rules.d/50-logfalcon-hostapd.rules"
 	Destinations["system/99-betaflight-fc.rules"] = "/etc/udev/rules.d/99-betaflight-fc.rules"
 	Destinations["system/journald.conf"] = "/etc/systemd/journald.conf.d/logfalcon.conf"
 }

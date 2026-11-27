@@ -40,7 +40,8 @@ func (s *Server) handleRecordingGet(w http.ResponseWriter, r *http.Request) {
 	case "controller":
 		msg = "Controller name saved."
 	}
-	s.sendHTML(w, r, 200, RenderRecording(id, s.Version, s.csrfToken, msg, a, c))
+	check, _ := storage.ReadCaptureCheck(s.storagePath, id)
+	s.sendHTML(w, r, 200, RenderRecording(id, s.Version, s.csrfToken, msg, a, c, check))
 }
 
 func (s *Server) annotationForm(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -95,11 +96,12 @@ func (s *Server) handleControllerPost(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, recordingURL(id)+"&saved=controller", http.StatusSeeOther)
 }
 
-func RenderRecording(id, version, csrf, msg string, a storage.RecordingAnnotation, c storage.ControllerAnnotation) string {
+func RenderRecording(id, version, csrf, msg string, a storage.RecordingAnnotation, c storage.ControllerAnnotation, check *storage.CaptureCheck) string {
 	body := pageIntro("", "Recording details", "") + `<div class="editor">`
 	if msg != "" {
 		body += `<p class="msg-success" role="status">` + esc(msg) + `</p>`
 	}
+	body += captureDetails(check)
 	hidden := `<input type="hidden" name="csrf_token" value="` + esc(csrf) + `"><input type="hidden" name="session" value="` + esc(id) + `">`
 	body += `<form class="panel form-panel" method="post" action="/recording">` + hidden + `<p class="field-note">Title and notes are optional.</p><div class="form-group"><label for="recording-title">Title</label><input id="recording-title" type="text" name="title" maxlength="120" value="` + esc(a.Title) + `"></div><div class="form-group"><label for="recording-notes">Notes</label><textarea id="recording-notes" name="notes" maxlength="2000" rows="5">` + esc(a.Notes) + `</textarea><small class="field-hint">Up to 2,000 characters.</small></div><details class="technical"><summary>File location</summary>` + esc(id) + `</details><div class="form-actions"><button class="primary">Save notes</button><a class="btn secondary" href="/#saved-logs">Back</a></div></form><form class="panel form-panel controller-form" method="post" action="/recording/controller">` + hidden + `<h2>Controller name</h2><p class="field-note">Used for all recordings from this controller.</p><div class="form-group"><label for="controller-nickname">Nickname</label><input type="text" id="controller-nickname" name="nickname" maxlength="80" value="` + esc(c.Nickname) + `"><small class="field-hint">Optional. Leave blank to show the controller ID.</small></div><button class="secondary">Save name</button></form></div>`
 	return renderShell("Recording details", "dashboard", version, body, recordingEditorJS)
@@ -144,7 +146,26 @@ func recordingContext(s *storage.Session) string {
 	if s.AnnotationUnavailable {
 		b.WriteString(`<p>Pilot annotations unavailable. Recording data is unchanged.</p>`)
 	}
-	b.WriteString(`<a class="btn secondary" href="` + esc(recordingURL(s.SessionID)) + `">Edit details</a></div>`)
+	b.WriteString(`<a class="btn secondary" href="` + esc(recordingURL(s.SessionID)) + `">Recording details</a></div>`)
+	return b.String()
+}
+
+func recordingTimes(s *storage.Session) string {
+	if s.Manifest == nil || len(s.Manifest.Recordings) == 0 {
+		return `<span>Flight start times unknown.</span>`
+	}
+	var b strings.Builder
+	unknown := 0
+	for i, r := range s.Manifest.Recordings {
+		if !storage.ValidRecordingStart(r.StartTime) {
+			unknown++
+			continue
+		}
+		fmt.Fprintf(&b, `<span>Recording %d start (controller): %s · byte %d</span>`, i+1, esc(r.StartTime), r.Offset)
+	}
+	if unknown > 0 {
+		fmt.Fprintf(&b, `<span>Flight start unknown for %d of %d recordings.</span>`, unknown, len(s.Manifest.Recordings))
+	}
 	return b.String()
 }
 

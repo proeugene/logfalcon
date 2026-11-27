@@ -6,8 +6,8 @@
 | iNav — Experimental; copying currently disabled | Rejected before copying | Correct firmware-specific protocol and real hardware acceptance |
 | FC-side SD cards | Rejected | Outside current scope |
 | ArduPilot / other firmware | Unsupported | Outside current scope |
-| Pi Zero 2 W | Primary evaluation target; ARM64 build | Exact image, Wi-Fi/USB/LED/power acceptance |
-| Pi Zero W | ARM6 build target | Separate physical validation; no performance claim |
+| Pi Zero 2 W | Shared 32-bit ARM6 image candidate and separate ARM64 binary build | Exact image, Wi-Fi/USB/LED/power acceptance |
+| Pi Zero W | Shared 32-bit ARM6 image candidate | Separate physical validation and timing on this board |
 
 See [version checks](../internal/fc/versions.go), [detection](../internal/fc/detector.go)
 and [fixed synthetic protocol fixtures](../internal/msp/testdata/README.md).

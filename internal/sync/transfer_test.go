@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -27,13 +28,17 @@ func (silentLED) RestoreTrigger() {}
 // the handshake. It does not call the orchestration helpers directly.
 type wirePeer struct {
 	goSerial.Port
-	data        []byte
-	pending     []byte
-	timeout     time.Duration
-	fault       string
-	eraseCount  int
-	requests    int
-	onFirstRead func() error
+	data         []byte
+	pending      []byte
+	timeout      time.Duration
+	fault        string
+	eraseCount   int
+	requests     int
+	apiRequests  int
+	apiSilentFor int
+	variant      string
+	onFirstRead  func() error
+	onErase      func()
 }
 
 func (p *wirePeer) SetReadTimeout(d time.Duration) error { p.timeout = d; return nil }
@@ -67,18 +72,31 @@ func (p *wirePeer) Write(b []byte) (int, error) {
 	var payload []byte
 	switch f.Code {
 	case msp.MSPAPIVersion:
+		p.apiRequests++
+		if p.apiRequests <= p.apiSilentFor {
+			return len(b), nil
+		}
 		payload = []byte{0, 1, 46}
 	case msp.MSPFCVariant:
 		payload = []byte("BTFL")
+		if p.variant != "" {
+			payload = []byte(p.variant)
+		}
 	case msp.MSPFCVersion:
 		payload = []byte{4, 5, 2}
 	case msp.MSPUID:
 		payload = bytes.Repeat([]byte{7}, 12)
 	case msp.MSPBlackboxConfig:
 		payload = []byte{1, 1, 1, 1, 0, 0, 0}
+		if p.fault == "sd-card" {
+			payload[1] = msp.BlackboxDeviceSDCard
+		}
 	case msp.MSPDataflashSummary:
 		payload = make([]byte, 13)
 		payload[0] = 3
+		if p.fault == "flash-busy" {
+			payload[0] = 2
+		}
 		binary.LittleEndian.PutUint32(payload[1:5], 16)
 		binary.LittleEndian.PutUint32(payload[5:9], 32*1024*1024)
 		if p.eraseCount == 0 {
@@ -135,7 +153,13 @@ func (p *wirePeer) Write(b []byte) (int, error) {
 			payload = payload[:6]
 		}
 	case msp.MSPDataflashErase:
+		if p.fault == "erase-write-error" {
+			return 0, io.ErrClosedPipe
+		}
 		p.eraseCount++
+		if p.onErase != nil {
+			p.onErase()
+		}
 		return len(b), nil
 	default:
 		return 0, fmt.Errorf("unexpected code %d", f.Code)
@@ -147,6 +171,97 @@ func (p *wirePeer) Write(b []byte) (int, error) {
 	}
 	p.pending = append(p.pending, response...)
 	return len(b), nil
+}
+
+func TestCompletionIdentifiesDurableCopy(t *testing.T) {
+	for _, erase := range []bool{false, true} {
+		t.Run(fmt.Sprint(erase), func(t *testing.T) {
+			o, _ := transferFixture(t, 65537, "")
+			o.Config.EraseAfterSync = erase
+			if o.Run("fake") != ResultSuccess {
+				t.Fatal(GetStatus())
+			}
+			sessions, err := storage.ListSessions(o.Config.StoragePath)
+			if err != nil || len(sessions) != 1 {
+				t.Fatalf("sessions=%v err=%v", sessions, err)
+			}
+			status := GetStatus()
+			saved := status.SavedCopy
+			if saved == nil || saved.SessionID != sessions[0].SessionID || saved.ControllerUID != sessions[0].Manifest.FC.UID || saved.Bytes != 65537 {
+				t.Fatalf("completion did not identify saved copy: %+v", status)
+			}
+			if saved.ControllerDataRetained == erase || saved.EraseAttempted != erase || saved.EraseCompleted != erase || status.BytesCopied != 65537 || status.TotalBytes != 65537 {
+				t.Fatalf("incorrect saved facts: %+v status=%+v", saved, status)
+			}
+		})
+	}
+}
+
+func TestKnownFailuresKeepTheirReason(t *testing.T) {
+	for _, tc := range []struct{ fault, reason string }{{"sd-card", "fc_sd_card"}, {"flash-busy", "flash_busy"}, {"disconnect", "copy_failed"}, {"erase-write-error", "erase_unconfirmed"}} {
+		t.Run(tc.fault, func(t *testing.T) {
+			o, _ := transferFixture(t, 4096, tc.fault)
+			o.Config.EraseAfterSync = true
+			if o.Run("fake") != ResultError {
+				t.Fatal("failure reported success")
+			}
+			status := GetStatus()
+			if status.ReasonCode != tc.reason {
+				t.Fatalf("reason=%q want %q; status=%+v", status.ReasonCode, tc.reason, status)
+			}
+			if tc.fault == "erase-write-error" {
+				if status.SavedCopy == nil || !status.SavedCopy.EraseAttempted || status.SavedCopy.EraseCompleted || status.SavedCopy.ControllerDataRetained {
+					t.Fatalf("unconfirmed erase facts=%+v", status.SavedCopy)
+				}
+			} else if status.SavedCopy != nil {
+				t.Fatal("failed copy advertised as saved")
+			}
+		})
+	}
+}
+
+func TestReadinessRecoversTransientStartup(t *testing.T) {
+	for _, fault := range []string{"port-not-yet-present", "controller-not-yet-ready"} {
+		t.Run(fault, func(t *testing.T) {
+			o, p := transferFixture(t, 4096, "")
+			o.Config.SerialTimeout = .02
+			attempts := 0
+			o.OpenPort = func(string, *goSerial.Mode) (goSerial.Port, error) {
+				attempts++
+				if fault == "port-not-yet-present" && attempts == 1 {
+					return nil, syscall.ENOENT
+				}
+				return p, nil
+			}
+			if fault == "controller-not-yet-ready" {
+				p.apiSilentFor = 2
+			}
+			if o.Run("fake") != ResultSuccess || p.eraseCount != 0 {
+				t.Fatalf("startup did not recover: %+v", GetStatus())
+			}
+		})
+	}
+}
+
+func TestReadinessDoesNotRetryPermanentFailures(t *testing.T) {
+	t.Run("permission", func(t *testing.T) {
+		o, p := transferFixture(t, 4096, "")
+		attempts := 0
+		o.OpenPort = func(string, *goSerial.Mode) (goSerial.Port, error) {
+			attempts++
+			return nil, syscall.EACCES
+		}
+		if o.Run("fake") != ResultError || attempts != 1 || p.requests != 0 || GetStatus().ReasonCode != "serial_unavailable" {
+			t.Fatalf("permanent open failure retried or unidentified: attempts=%d status=%+v", attempts, GetStatus())
+		}
+	})
+	t.Run("unsupported-controller", func(t *testing.T) {
+		o, p := transferFixture(t, 4096, "")
+		p.variant = "ARDU"
+		if o.Run("fake") != ResultError || p.apiRequests > 2 || p.requests != 0 || GetStatus().ReasonCode != "unsupported_controller" {
+			t.Fatalf("unsupported controller retried or copied: %+v", GetStatus())
+		}
+	})
 }
 
 func transferFixture(t *testing.T, size int, fault string) (*Orchestrator, *wirePeer) {
@@ -244,6 +359,59 @@ func TestRunEraseRequiresOptIn(t *testing.T) {
 	}
 }
 
+func TestEraseSkipsFlashThatChangedDuringCopy(t *testing.T) {
+	o, peer := transferFixture(t, 4097, "")
+	o.Config.EraseAfterSync = true
+	initial := bytes.Clone(peer.data)
+	peer.onFirstRead = func() error {
+		peer.data = append(peer.data, []byte("new recording")...)
+		return nil
+	}
+	result := o.Run("fake")
+	if result != ResultError || peer.eraseCount != 0 {
+		t.Fatalf("flash grew past the saved bytes: result=%v, erase commands=%d", result, peer.eraseCount)
+	}
+	status := GetStatus()
+	if status.ReasonCode != "erase_skipped" || status.SavedCopy == nil || status.SavedCopy.EraseAttempted {
+		t.Fatalf("expected a saved copy and a skipped erase, got %+v", status)
+	}
+	dir := filepath.Join(o.Config.StoragePath, status.SavedCopy.SessionID)
+	saved, err := os.ReadFile(filepath.Join(dir, storage.RawFlashFilename))
+	if err != nil || !bytes.Equal(saved, initial) {
+		t.Fatalf("initial recording was not preserved: %v", err)
+	}
+	manifest, err := storage.ReadManifest(o.Config.StoragePath, status.SavedCopy.SessionID)
+	if err != nil || manifest.EraseAttempted || manifest.EraseCompleted {
+		t.Fatalf("incorrect erase result in manifest: %+v, %v", manifest, err)
+	}
+}
+
+func TestSavedSessionCannotBeDeletedDuringControllerErase(t *testing.T) {
+	o, peer := transferFixture(t, 4097, "")
+	o.Config.EraseAfterSync = true
+	var sessionID string
+	peer.onErase = func() {
+		saved := GetStatus().SavedCopy
+		if saved == nil {
+			t.Fatal("missing published copy at erase")
+		}
+		sessionID = saved.SessionID
+		if err := storage.DeleteSession(o.Config.StoragePath, sessionID); err == nil {
+			t.Error("deleted the saved copy while erasing controller flash")
+		}
+	}
+	if result := o.Run("fake"); result != ResultSuccess || peer.eraseCount != 1 {
+		t.Fatalf("result %v, erase count %d", result, peer.eraseCount)
+	}
+	bbl, err := os.ReadFile(filepath.Join(o.Config.StoragePath, sessionID, storage.RawFlashFilename))
+	if err != nil || !bytes.Equal(bbl, peer.data) {
+		t.Fatal("erased controller without retaining the verified bytes")
+	}
+	if err := storage.DeleteSession(o.Config.StoragePath, sessionID); err != nil {
+		t.Fatalf("could not delete after completion: %v", err)
+	}
+}
+
 func TestTransferLock(t *testing.T) {
 	dir := t.TempDir()
 	first, err := acquireTransferLock(dir)
@@ -283,6 +451,9 @@ func TestPublicationAndVerificationFailureNeverErase(t *testing.T) {
 			if len(sessions) != 0 {
 				t.Fatal("uncommitted session advertised")
 			}
+			if GetStatus().SavedCopy != nil {
+				t.Fatal("failed verification/publication advertised a saved copy")
+			}
 		})
 	}
 }
@@ -293,6 +464,9 @@ func TestDryRunNeverErases(t *testing.T) {
 	o.DryRun = true
 	if o.Run("fake") != ResultDryRun || p.eraseCount != 0 {
 		t.Fatal("dry run erased")
+	}
+	if saved := GetStatus().SavedCopy; saved == nil || !saved.ControllerDataRetained || saved.EraseAttempted || saved.EraseCompleted {
+		t.Fatalf("dry run outcome=%+v", saved)
 	}
 }
 

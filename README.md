@@ -18,6 +18,7 @@ LogFalcon is an open-source Go appliance for copying flight-controller blackbox 
 - **FC-side SD cards and ArduPilot:** not supported.
 - **Pi Zero W / Zero 2 W:** build targets exist; this checkout does not establish physical compatibility, boot time or transfer speed.
 - **Dashboard:** reads boot-scoped transfer status and lists saved recordings. Each flash copy may contain several flights; displayed times identify collection, not flight time.
+- **Blackbox capture check.** After a copy, the dashboard identifies repeated dumps and newly appended recording headers when it can match the previous saved bytes. Open **Channel details** to see which headers declare filtered and unfiltered gyro on X, Y and Z. Use Betaflight’s Viewer to inspect the samples.
 - **Batch download:** select recordings and choose **Download selected** for one ZIP with `.bbl` files, manifests, notes and controller names. Up to 100 recordings per ZIP; controller/session folders keep files distinct.
 - **Pilot context:** use **Edit details** on a recording to add optional notes or a controller nickname. Save each section separately. Blank fields restore the unlabelled display. Annotations do not change the recording or transfer manifest; collection does not require them.
 
@@ -50,7 +51,7 @@ Signed offline application updates are available through **Software update** in 
 
 The [guide](https://proeugene.github.io/logfalcon/guide.html) covers downloads, configuration, LED behaviour, troubleshooting, SSH administration, CLI usage and local dashboard testing.
 
-Requires **Go 1.27**, tested with **1.27.3**. The application is a single Go binary; the Pi image also supplies Linux services and hotspot utilities.
+Requires **Go 1.27**. The [contributor guide](CONTRIBUTING.md) gives the tested patch and verification commands. The application is a single Go binary; the Pi image also supplies Linux services and hotspot utilities.
 
 ```sh
 make build       # Native binary

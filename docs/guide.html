@@ -35,7 +35,7 @@
           <li><span>Download a Raspberry Pi image from <a href="https://github.com/proeugene/logfalcon/releases">Releases</a>. Choose a candidate whose notes include the current safety fixes and verify its image against checksums.txt. Older releases may lack these fixes.</span></li>
           <li><span>Flash it using Raspberry Pi Imager or Etcher. On the boot partition, optionally edit <code>logfalcon-config.txt</code> to set <code>SSID</code>, <code>PASSWORD</code> and <code>COUNTRY_CODE</code> (for example, <code>GB</code> in the UK).</span></li>
           <li><span>Insert the card and power the Pi through <strong>PWR IN</strong>. Wait for the hotspot; boot timing has not been established for this image.</span></li>
-          <li><span>Join <strong>LogFalcon</strong> Wi-Fi (default password <code>fpvpilot</code>), then open <a href="http://log.falcon">http://log.falcon</a> or <a href="http://192.168.4.1">http://192.168.4.1</a>.</span></li>
+          <li><span>On a fresh installation, join the Wi-Fi network named <strong>LogFalcon-</strong> followed by the device's 12-character ID, or your configured network name. Upgrades keep the existing name. The temporary default password is <code>fpvpilot</code>. Open <a href="http://log.falcon">http://log.falcon</a> or <a href="http://192.168.4.1">http://192.168.4.1</a>.</span></li>
         </ol>
         <h3>Before connecting a controller</h3>
         <p>Use SSH to edit <code>/etc/logfalcon/logfalcon.toml</code>. Set these values in the existing file:</p>
@@ -104,7 +104,7 @@ curl http://127.0.0.1/health</code></pre><p>The default SSH password is <code>lo
       </section>
       <section id="building" class="doc-section">
         <h2 class="section-label">Development</h2>
-        <p>Requires Go 1.27 (tested with 1.27.3). All application code is Go, with a stdlib HTTP interface and embedded HTML templates. No JavaScript framework is required.</p>
+        <p>Use Go 1.27 with the toolchain selected in the checkout's <code>go.mod</code>. The dashboard uses Go's standard HTTP server and embedded HTML templates.</p>
         <pre><code>git clone https://github.com/proeugene/logfalcon.git
 cd logfalcon
 make build

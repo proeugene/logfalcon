@@ -3,7 +3,6 @@ package sync
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/proeugene/logfalcon/internal/fc"
 	"io"
 	"log/slog"
 	"os"
@@ -12,21 +11,25 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/proeugene/logfalcon/internal/fc"
 )
 
 // Status is the thread-safe sync status read by the web server.
 type Status struct {
-	TransferID  string    `json:"transfer_id"`
-	BootID      string    `json:"boot_id"`
-	PID         int       `json:"pid"`
-	UpdatedUTC  time.Time `json:"updated_utc"`
-	State       string    `json:"state"`
-	Progress    int       `json:"progress"`
-	Message     string    `json:"message"`
-	BytesCopied uint32    `json:"bytes_copied"`
-	TotalBytes  uint32    `json:"total_bytes"`
-	SpeedBPS    float64   `json:"speed_bps"`
-	ETASec      int       `json:"eta_sec"`
+	TransferID  string     `json:"transfer_id"`
+	BootID      string     `json:"boot_id"`
+	PID         int        `json:"pid"`
+	UpdatedUTC  time.Time  `json:"updated_utc"`
+	State       string     `json:"state"`
+	Progress    int        `json:"progress"`
+	Message     string     `json:"message"`
+	BytesCopied uint32     `json:"bytes_copied"`
+	TotalBytes  uint32     `json:"total_bytes"`
+	SpeedBPS    float64    `json:"speed_bps"`
+	ETASec      int        `json:"eta_sec"`
+	ReasonCode  string     `json:"reason_code,omitempty"`
+	SavedCopy   *SavedCopy `json:"saved_copy,omitempty"`
 	// FC identity — populated once the handshake completes.
 	FCVariant         string `json:"fc_variant"`          // e.g. "BTFL" or "INAV"
 	FCFirmwareVersion string `json:"fc_firmware_version"` // e.g. "4.5.0"
@@ -34,6 +37,19 @@ type Status struct {
 	// Warning is non-empty when firmware is newer than protocol-reviewed.
 	// The sync proceeds but the user is shown an amber notice.
 	Warning string `json:"warning,omitempty"`
+}
+
+// SavedCopy identifies a durably published file and manifest. Outcome flags are
+// updated only after the corresponding manifest write succeeds. A saved copy
+// can accompany an error (for example an unconfirmed erase); it is not itself
+// a claim that the whole operation completed.
+type SavedCopy struct {
+	SessionID              string `json:"session_id"`
+	ControllerUID          string `json:"controller_uid"`
+	Bytes                  int64  `json:"bytes"`
+	ControllerDataRetained bool   `json:"controller_data_retained"`
+	EraseAttempted         bool   `json:"erase_attempted"`
+	EraseCompleted         bool   `json:"erase_completed"`
 }
 
 var (
@@ -51,6 +67,10 @@ var (
 func GetStatus() Status {
 	statusMu.RLock()
 	path, local := statusPath, currentStatus
+	if local.SavedCopy != nil {
+		copy := *local.SavedCopy
+		local.SavedCopy = &copy
+	}
 	statusMu.RUnlock()
 	if path == "" {
 		return local
@@ -90,7 +110,7 @@ func BeginTransfer(port string) error {
 }
 
 func ReadStatus(path string) Status {
-	unknown := Status{State: "unavailable", Message: "Transfer status cannot be read; completion is not confirmed."}
+	unknown := Status{State: "unavailable", ReasonCode: "status_unavailable", Message: "Transfer status cannot be read; completion is not confirmed."}
 	f, err := os.Open(path)
 	if os.IsNotExist(err) {
 		return Status{State: "waiting", Message: "No transfer recorded this boot. Connect a controller."}
@@ -99,8 +119,13 @@ func ReadStatus(path string) Status {
 		return unknown
 	}
 	defer func() { _ = f.Close() }()
+	const maxStatusSize = 16 * 1024
+	data, err := io.ReadAll(io.LimitReader(f, maxStatusSize+1))
+	if err != nil || len(data) > maxStatusSize {
+		return unknown
+	}
 	var s Status
-	if err := json.NewDecoder(io.LimitReader(f, 16384)).Decode(&s); err != nil {
+	if err := json.Unmarshal(data, &s); err != nil || s.BootID == "" {
 		return unknown
 	}
 	if s.BootID != bootID() {
@@ -109,9 +134,13 @@ func ReadStatus(path string) Status {
 	if !s.Active() && !s.Terminal() && s.State != "idle" && s.State != "waiting" {
 		return unknown
 	}
+	if (s.State == "complete" || s.State == "empty") && (s.TransferID == "" || s.PID <= 0 || s.UpdatedUTC.IsZero()) {
+		return unknown
+	}
 	if s.Active() {
 		if s.PID <= 0 || syscall.Kill(s.PID, 0) == syscall.ESRCH || time.Since(s.UpdatedUTC) > 11*time.Minute {
 			s.State, s.Message = "interrupted", "Copy process stopped or stopped updating; completion is not confirmed."
+			s.ReasonCode = "copy_interrupted"
 		}
 	}
 	return s
@@ -194,8 +223,29 @@ func SetStatus(state string, progress int, message string) {
 		FCFirmwareVersion: prev.FCFirmwareVersion,
 		FCAPIVersion:      prev.FCAPIVersion,
 		Warning:           prev.Warning,
+		BytesCopied:       prev.BytesCopied,
+		TotalBytes:        prev.TotalBytes,
+		SavedCopy:         prev.SavedCopy,
 	}
 	_ = publishLocked(true) // error is latched and checked by the orchestrator
+}
+
+// setFailure publishes a stable cause without replacing it with a generic
+// error when Run propagates the same failure.
+func setFailure(code, message string) {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	currentStatus.State, currentStatus.Progress = "error", 0
+	currentStatus.ReasonCode, currentStatus.Message = code, message
+	currentStatus.SpeedBPS, currentStatus.ETASec = 0, 0
+	_ = publishLocked(true)
+}
+
+func setSavedCopy(saved SavedCopy) error {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	currentStatus.SavedCopy = &saved
+	return publishLocked(true)
 }
 
 // setFCIdentity stores the FC identity fields after a successful handshake.
@@ -228,6 +278,7 @@ func SetStatusSync(state string, progress int, message string, bytesCopied, tota
 		FCFirmwareVersion: prev.FCFirmwareVersion,
 		FCAPIVersion:      prev.FCAPIVersion,
 		Warning:           prev.Warning,
+		SavedCopy:         prev.SavedCopy,
 	}
 	_ = publishLocked(false) // error is latched and checked by the orchestrator
 }

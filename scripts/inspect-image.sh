@@ -326,6 +326,18 @@ ls /mnt/root/etc/systemd/system/multi-user.target.wants/ 2>/dev/null | sort | se
 hdr "Potential issues summary"
 
 ISSUES=0
+if [[ ${LOGFALCON_IMAGE_CONTAINER:-} == 1 ]]; then
+  for key in /work/src/update-keys/*.pub; do
+    [[ -f "$key" ]] || continue
+    installed="/mnt/root/usr/share/logfalcon/update-keys/${key##*/}"
+    if cmp -s "$key" "$installed"; then
+      ok "Installed update key matches source: ${key##*/}"
+    else
+      err "Installed update key missing or differs: ${key##*/}"
+      ISSUES=$((ISSUES+1))
+    fi
+  done
+fi
 if [ -z "$BINARY" ] || [ -z "$TOML" ]; then
   err "CRITICAL: application binary or configuration missing"
   ISSUES=$((ISSUES+1))

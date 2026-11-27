@@ -11,8 +11,12 @@ Download the architecture-specific .lfu file while online. Join the appliance's
 unique LogFalcon Wi-Fi, open http://192.168.4.1, then Software update (also linked
 from Settings). Upload, review the authenticated target version and install.
 Keep power connected, reconnect if necessary and wait for the installed version
-and confirmed success. A dropped connection or successful upload is not proof
-of installation. Reload an old cached form after a restart/CSRF rejection.
+and confirmed application update. The status then asks for a controlled reboot
+to activate boot-only integration changes. After reboot, the worker clears that
+reminder only when the boot ID changed and the installed application's version,
+commit and readiness pass its health check. A dropped connection or successful
+upload is not proof of installation. Reload an old cached form after a
+restart/CSRF rejection.
 
 Packages use the installed application/OS ABI: arm6 for a 32-bit image, including
 a Zero 2 W running that image; arm64 for a 64-bit OS; amd64 for Linux AMD64.
@@ -47,6 +51,40 @@ accepting another update; copies reject pending recovery. Health confirmation is
 bounded and must match version/commit and application readiness. Failed recovery
 remains pending and retryable. A successful rollback reports restoration, not
 new-release success. Configuration and saved logs are never replaced by a package.
+
+Activation and rollback reload systemd unit definitions and udev rules, restart
+journald and the LED service if they are running, then restart the web service.
+Failure of any of these operations prevents confirmation and invokes rollback;
+failed rollback retains the journal for another recovery attempt. Reloading udev
+does not retrigger a controller already attached. Application health confirms the
+web version, commit and readiness, not a successful physical FC copy or Wi-Fi test.
+
+Boot-only setup/identity/network services, the diagnostics timer, and the update
+path/worker themselves are deliberately not restarted during their own update.
+Their new definitions take effect on the next boot. `RebootRequired` and the
+status message expose that boundary; the updater does not reboot automatically.
+An unavailable boot ID or failed post-reboot health check leaves the reminder
+in place. The boot worker can check application health while the collector
+uses USB. Only a queued installation or pending activation recovery takes the
+shared transfer lock.
+
+The polkit policy now uses the same installed name as fresh images and both
+installers: `/etc/polkit-1/rules.d/50-logfalcon-hostapd.rules`. The obsolete
+`50-logfalcon.rules` created by earlier candidate workers is backed up, durably
+removed and included in the rollback journal. Recovery restores the exact previous
+layout, including a previously absent policy, rather than leaving a second allow
+rule active after an update.
+
+These changes apply when the **revised worker executes the transaction**. An
+older worker installing the first revised release still uses its old embedded
+destination map and restart sequence. Rebooting starts the revised executable but
+does not retroactively migrate that transaction's policy paths. For an existing
+candidate with the older worker, use the verified source-bootstrap route below
+first. The revised installers install the canonical policy, remove the obsolete
+copy and install the revised worker; reboot before using later signed packages.
+Do not treat a single old-worker update and reboot as evidence that this policy
+migration ran. Bootstrap remains a separate administrator operation, without the
+dashboard worker's transactional rollback guarantee.
 
 Only one previous application is retained. These filesystem/process tests cannot
 establish SD-card power-loss behaviour. On a damaged filesystem, restore the spare

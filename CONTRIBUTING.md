@@ -4,7 +4,7 @@ Keep LogFalcon focused on reliable Betaflight SPI-flash collection. iNav copying
 is disabled pending separate protocol and hardware evidence. Discuss broader
 scope before implementing it. See [architecture](docs/ARCHITECTURE.md).
 
-Use Go **1.27.3** (the currently tested patch), Linux or macOS. `go.mod` requires
+Use Go **1.27.4** (the currently tested patch), Linux or macOS. `go.mod` requires
 Go 1.27; older toolchains are not supported because storage uses `os.Root`.
 The application needs no Python or frontend build. Installer integration runs
 with GNU sed on Linux; the macOS fixture adapts BSD sed. The image builder below

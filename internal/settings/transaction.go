@@ -31,6 +31,7 @@ type Manager struct {
 	Hostapd, Config string
 	LegacyHash      string                     // optional migration-path override for filesystem tests
 	Restart         func() error               // must wait for completion; nil only before hostapd starts
+	EnsureActive    func() error               // idempotent start for unchanged boot input; never replaces recovery restart
 	Write           func(string, []byte) error // optional failure injection for tests
 }
 
@@ -288,10 +289,7 @@ func (m Manager) ApplyBoot(path string) error {
 	return m.locked(func() error {
 		b, err := os.ReadFile(path)
 		if errors.Is(err, os.ErrNotExist) {
-			if m.Restart != nil {
-				return m.Restart()
-			}
-			return nil
+			return m.ensureBootActive()
 		}
 		if err != nil {
 			return err
@@ -300,10 +298,7 @@ func (m Manager) ApplyBoot(path string) error {
 		hash := hex.EncodeToString(sum[:])
 		old, _ := os.ReadFile(m.path("boot-applied.sha256"))
 		if strings.TrimSpace(string(old)) == hash {
-			if m.Restart != nil {
-				return m.Restart()
-			}
-			return nil
+			return m.ensureBootActive()
 		}
 		// Preserve browser changes made after a legacy boot input. The old
 		// marker did not prove restart success, so confirm it before migration.
@@ -339,6 +334,19 @@ func (m Manager) ApplyBoot(path string) error {
 		}
 		return m.apply(v, hash)
 	})
+}
+
+// The service has already waited for hostapd's initial start. Confirm it is
+// active without restarting a healthy AP on every boot. Pending recovery,
+// changed input and legacy markers still take the confirmed restart path.
+func (m Manager) ensureBootActive() error {
+	if _, err := config.Load(m.Config); err != nil {
+		return err
+	}
+	if m.EnsureActive != nil {
+		return m.EnsureActive()
+	}
+	return nil
 }
 
 // Rewrite preserves unrelated settings and comments and appends missing keys.

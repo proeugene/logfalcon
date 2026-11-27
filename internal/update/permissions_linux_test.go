@@ -110,10 +110,22 @@ func TestWorkerAndServiceAccountShareLock(t *testing.T) {
 					t.Fatalf("bounded worker: %v %s", err, out)
 				}
 			}
+			request := filepath.Join(dir, "inbox", "request")
+			queue := func() {
+				t.Helper()
+				if err := os.WriteFile(request, []byte("invalid test upload"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chown(request, 65534, 65534); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if first == "service" {
 				userLock(false)
 			}
 			worker("idle")
+			queue()
+			worker("invalid")
 			before, err := os.Stat(lockPath)
 			if err != nil {
 				t.Fatal(err)
@@ -131,16 +143,10 @@ func TestWorkerAndServiceAccountShareLock(t *testing.T) {
 			if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 				t.Fatal(err)
 			}
+			queue()
 			worker("busy")
 			userLock(true)
 			if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
-				t.Fatal(err)
-			}
-			request := filepath.Join(dir, "inbox", "request")
-			if err := os.WriteFile(request, []byte("invalid test upload"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Chown(request, 65534, 65534); err != nil {
 				t.Fatal(err)
 			}
 			worker("invalid")

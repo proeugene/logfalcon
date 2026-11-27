@@ -81,15 +81,22 @@ func main() {
 	}
 
 	if applyBoot {
+		diagnostics.ConfigureLogging(false, Version, BuildCommit)
+		slog.Info("startup checkpoint", "checkpoint", "boot_settings_start")
 		bootFile := "/boot/firmware/logfalcon-config.txt"
 		if _, err := os.Stat(bootFile); os.IsNotExist(err) {
 			bootFile = "/boot/logfalcon-config.txt"
 		}
-		m := settings.Manager{Hostapd: "/etc/logfalcon/hostapd.conf", Config: "/etc/logfalcon/logfalcon.toml", Restart: func() error {
+		hotspot := func(verb string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			return exec.CommandContext(ctx, "systemctl", "restart", "hostapd.service").Run()
-		}}
+			return exec.CommandContext(ctx, "systemctl", verb, "hostapd.service").Run()
+		}
+		m := settings.Manager{
+			Hostapd: "/etc/logfalcon/hostapd.conf", Config: "/etc/logfalcon/logfalcon.toml",
+			Restart:      func() error { return hotspot("restart") },
+			EnsureActive: func() error { return hotspot("start") },
+		}
 		if err := m.ApplyBoot(bootFile); err != nil {
 			slog.Error("boot settings failed", "error", err)
 			os.Exit(1)
@@ -98,6 +105,7 @@ func main() {
 			slog.Error("device identity failed", "error", err)
 			os.Exit(1)
 		}
+		slog.Info("startup checkpoint", "checkpoint", "boot_settings_ready")
 		return
 	}
 

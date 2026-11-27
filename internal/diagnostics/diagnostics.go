@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -203,23 +204,32 @@ func Export(o Options) error {
 			snap.Lifecycle = &state
 		}
 	}
-	collect := func(args ...string) string {
+	collect := func(section string, args ...string) string {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		b, err := journal(ctx, args...)
 		if len(b) > 256*1024 {
 			b = b[len(b)-256*1024:]
-			snap.Warnings = append(snap.Warnings, "Journal section truncated to 256 KiB.")
+			snap.Warnings = append(snap.Warnings, section+": truncated to 256 KiB.")
 		}
 		if err != nil {
-			snap.Warnings = append(snap.Warnings, "Journal section unavailable or timed out: "+strings.Join(args, " "))
+			reason := Redact(err.Error(), secrets...)
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				reason = "timed out after 2s"
+			}
+			if len(reason) > 512 {
+				reason = reason[:512]
+			}
+			snap.Warnings = append(snap.Warnings, "Journal section unavailable ("+section+"): "+reason)
+		} else if len(bytes.TrimSpace(b)) == 0 || strings.TrimSpace(string(b)) == "-- No entries --" {
+			snap.Warnings = append(snap.Warnings, "Journal section unavailable ("+section+"): no retained entries visible to exporter")
 		}
 		return Redact(string(b), secrets...)
 	}
-	snap.Boots = collect("--list-boots", "-n", "2", "--no-pager", "--no-legend")
+	snap.Boots = collect("journal_boots", "--list-boots", "-n", "2", "--no-pager")
 	for _, boot := range []string{"0", "-1"} {
-		snap.Logs["services_boot_"+boot] = collect("--boot="+boot, "--no-pager", "--output=short-monotonic", "-n", "500", "-u", "logfalcon*", "-u", "hostapd", "-u", "dnsmasq", "-u", "systemd-networkd", "-u", "systemd-udevd")
-		snap.Logs["kernel_boot_"+boot] = collect("--boot="+boot, "--kernel", "--no-pager", "--output=short-monotonic", "-n", "500")
+		snap.Logs["services_boot_"+boot] = collect("services_boot_"+boot, "--boot="+boot, "--no-pager", "--output=short-monotonic", "-n", "500", "-u", "logfalcon*", "-u", "hostapd", "-u", "dnsmasq", "-u", "systemd-networkd", "-u", "systemd-udevd")
+		snap.Logs["kernel_boot_"+boot] = collect("kernel_boot_"+boot, "--boot="+boot, "--dmesg", "--no-pager", "--output=short-monotonic", "-n", "500")
 	}
 	data, err := json.MarshalIndent(snap, "", "  ")
 	if err != nil {
@@ -238,34 +248,45 @@ func Export(o Options) error {
 }
 
 type boundedOutput struct {
-	bytes.Buffer
+	buf       bytes.Buffer // Keep io.Copy on Write, which enforces the capture limit.
 	truncated bool
 }
 
 func (b *boundedOutput) Write(p []byte) (int, error) {
 	n := len(p)
 	if len(p) > 256*1024 {
-		b.Reset()
+		b.buf.Reset()
 		p = p[len(p)-256*1024:]
 		b.truncated = true
 	}
-	if extra := b.Len() + len(p) - 256*1024; extra > 0 {
-		b.Next(extra)
+	if extra := b.buf.Len() + len(p) - 256*1024; extra > 0 {
+		b.buf.Next(extra)
 		b.truncated = true
 	}
-	_, _ = b.Buffer.Write(p)
+	_, _ = b.buf.Write(p)
 	return n, nil
 }
 func readJournal(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "journalctl", args...)
 	out := &boundedOutput{}
 	cmd.Stdout = out
-	cmd.Stderr = io.Discard
+	stderr := &boundedOutput{}
+	cmd.Stderr = stderr
+	cmd.WaitDelay = 250 * time.Millisecond
 	err := cmd.Run()
-	if out.truncated {
-		return append([]byte("[journal section truncated]\n"), out.Bytes()...), err
+	if err != nil {
+		reason := strings.TrimSpace(stderr.buf.String())
+		if stderr.truncated {
+			reason = "journalctl error output exceeded capture limit"
+		}
+		if reason != "" {
+			err = fmt.Errorf("%w: %s", err, reason)
+		}
 	}
-	return out.Bytes(), err
+	if out.truncated {
+		return append([]byte("[journal section truncated]\n"), out.buf.Bytes()...), err
+	}
+	return out.buf.Bytes(), err
 }
 
 func atomicWrite(path string, data []byte, syncDir bool) error {

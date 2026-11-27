@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/proeugene/logfalcon/internal/config"
 )
@@ -30,6 +32,107 @@ func TestDebugLoggingHasContextAndCanBeDisabled(t *testing.T) {
 		if _, ok := event[key]; !ok {
 			t.Fatalf("missing %s", key)
 		}
+	}
+}
+
+func TestJournalPipeCopyHonoursCaptureLimit(t *testing.T) {
+	const limit = 256 * 1024
+	var out boundedOutput
+	data := strings.Repeat("x", limit) + "end"
+	if _, err := io.Copy(&out, io.LimitReader(strings.NewReader(data), int64(len(data)))); err != nil {
+		t.Fatal(err)
+	}
+	if !out.truncated || out.buf.Len() != limit || !bytes.HasSuffix(out.buf.Bytes(), []byte("end")) {
+		t.Fatal("journal pipe copy bypassed the capture limit")
+	}
+}
+
+func TestReadJournalRetainsOutputAndFailureReason(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\nprintf 'retained output\\n'\nprintf 'journalctl: permission denied\\n' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "journalctl"), []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	b, err := readJournal(context.Background(), "--dmesg")
+	if string(b) != "retained output\n" || err == nil || !strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("%q %v", b, err)
+	}
+	marker := filepath.Join(dir, "ready")
+	t.Setenv("JOURNAL_TEST_READY", marker)
+	script = "#!/bin/sh\nprintf 'before cancellation\\n'\n: > \"$JOURNAL_TEST_READY\"\nexec /bin/sleep 60\n"
+	if err := os.WriteFile(filepath.Join(dir, "journalctl"), []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	finished := make(chan struct{})
+	go func() {
+		b, err = readJournal(ctx)
+		close(finished)
+	}()
+	for {
+		if _, statErr := os.Stat(marker); statErr == nil {
+			break
+		}
+		select {
+		case <-finished:
+			t.Fatalf("fixture exited before writing output: %v", err)
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	cancel()
+	<-finished
+	if string(b) != "before cancellation\n" || err == nil || !errors.Is(ctx.Err(), context.Canceled) {
+		t.Fatalf("%q %v", b, err)
+	}
+}
+
+func TestExportPartialSectionsHaveSpecificReasons(t *testing.T) {
+	o := Options{BootDir: t.TempDir(), StateDir: t.TempDir(), Journal: func(ctx context.Context, args ...string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		if strings.Contains(joined, "--kernel") || strings.Contains(joined, "--no-legend") {
+			t.Fatal("unsupported Bookworm journal argument")
+		}
+		if strings.Contains(joined, "--list-boots") {
+			// A known secret straddles the exported warning's 512-byte boundary.
+			return []byte("0 boot-id"), errors.New(strings.Repeat(".", 508) + "fpvpilot")
+		}
+		if strings.Contains(joined, "--dmesg") {
+			if strings.Contains(joined, "--boot=-1") {
+				return []byte("partial kernel evidence"), errors.New("journalctl: Permission denied; password=secret-value")
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return []byte("useful services"), nil
+	}}
+	started := time.Now()
+	if err := Export(o); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(started) > 5*time.Second {
+		t.Fatal("section timeout not bounded")
+	}
+	b, err := os.ReadFile(filepath.Join(o.BootDir, "LOGFALCON-DIAGNOSTICS", "latest.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s Snapshot
+	if err = json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	if s.Logs["services_boot_0"] != "useful services" || s.Logs["kernel_boot_-1"] != "partial kernel evidence" || s.Boots == "" {
+		t.Fatal("partial evidence lost")
+	}
+	warnings := strings.Join(s.Warnings, " ")
+	for _, want := range []string{"kernel_boot_0", "timed out after 2s", "kernel_boot_-1", "Permission denied"} {
+		if !strings.Contains(warnings, want) {
+			t.Fatal(warnings)
+		}
+	}
+	if strings.Contains(warnings, "secret-value") || strings.Contains(warnings, "fpvp") {
+		t.Fatal("stderr secret exported")
 	}
 }
 

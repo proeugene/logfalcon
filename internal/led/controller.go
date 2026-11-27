@@ -3,6 +3,7 @@ package led
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -281,15 +282,35 @@ func (*noopBackend) Set(bool)        {}
 func (*noopBackend) DisableTrigger() {}
 func (*noopBackend) RestoreTrigger() {}
 
-type sysfsBackend struct{}
+type sysfsBackend struct {
+	dir string
+}
 
-func ledPath(name string) string {
-	for _, dir := range []string{"/sys/class/leds/ACT", "/sys/class/leds/led0"} {
-		if _, err := os.Stat(dir); err == nil {
-			return dir + "/" + name
+func discoverLED(root string) string {
+	for _, name := range []string{"ACT", "led0"} {
+		dir := filepath.Join(root, name)
+		brightness, e1 := os.Stat(filepath.Join(dir, "brightness"))
+		trigger, e2 := os.Stat(filepath.Join(dir, "trigger"))
+		if e1 == nil && e2 == nil && !brightness.IsDir() && !trigger.IsDir() {
+			return dir
 		}
 	}
-	return "/sys/class/leds/led0/" + name
+	return ""
+}
+
+func (b *sysfsBackend) write(name, value string) {
+	if b.dir == "" {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(b.dir, name), os.O_WRONLY, 0)
+	if err == nil {
+		_, err = f.WriteString(value)
+		_ = f.Close()
+	}
+	if err != nil {
+		slog.Warn("LED control unavailable; further writes disabled", "error", err)
+		b.dir = ""
+	}
 }
 
 func (b *sysfsBackend) Set(on bool) {
@@ -297,19 +318,20 @@ func (b *sysfsBackend) Set(on bool) {
 	if on {
 		val = "1"
 	}
-	if err := os.WriteFile(ledPath("brightness"), []byte(val), 0644); err != nil {
-		slog.Debug("LED write failed", "error", err)
-	}
+	b.write("brightness", val)
 }
 
 func (b *sysfsBackend) DisableTrigger() {
-	if err := os.WriteFile(ledPath("trigger"), []byte("none"), 0644); err != nil {
-		slog.Warn("LED control unavailable", "error", err)
+	b.dir = discoverLED("/sys/class/leds")
+	if b.dir == "" {
+		slog.Warn("LED control unavailable: no ACT or led0 attributes")
+		return
 	}
+	b.write("trigger", "none")
 }
 
 func (b *sysfsBackend) RestoreTrigger() {
-	_ = os.WriteFile(ledPath("trigger"), []byte("mmc0"), 0644)
+	b.write("trigger", "mmc0")
 }
 
 // --- gpio backend (placeholder) ---

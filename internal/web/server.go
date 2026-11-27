@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -176,7 +177,14 @@ func (s *Server) ListenAndServe(addr string) error {
 		IdleTimeout:    120 * time.Second,
 		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
-	return srv.ListenAndServe()
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	// The structured logger adds boot identity and uptime. Binding HTTP says
+	// nothing about hotspot readiness or whether a phone has joined it.
+	slog.Info("application checkpoint", "checkpoint", "http_listening", "addr", listener.Addr().String())
+	return srv.Serve(listener)
 }
 
 // ServeHTTP records meaningful actions, excluding probes, polling and query strings.
@@ -286,6 +294,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		)
 	}
 
+	status := lfSync.ReadStatus(s.config.StatusPath)
 	body := RenderIndex(IndexParams{
 		Version:            s.Version,
 		DeviceName:         readHostapdConfigAt(s.hotspotPath)["ssid"],
@@ -295,7 +304,8 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		SessionsHTML:       sessionsHTML,
 		StorageWarningHTML: storageWarningHTML,
 		CSRFToken:          s.csrfToken,
-		Status:             lfSync.ReadStatus(s.config.StatusPath),
+		Status:             status,
+		Capture:            s.completedCapture(status),
 	})
 	s.sendHTML(w, r, http.StatusOK, body)
 }
@@ -328,6 +338,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"fc_firmware_version": status.FCFirmwareVersion,
 		"fc_api_version":      status.FCAPIVersion,
 		"warning":             status.Warning,
+		"reason_code":         status.ReasonCode,
+		"saved_copy":          status.SavedCopy,
+		"presentation":        presentTransfer(status),
+		"capture":             s.completedCapture(status),
 	}
 	s.addIdleShutdownInfo(payload)
 	s.sendJSON(w, r, http.StatusOK, payload)
@@ -453,11 +467,19 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		s.sendError(w, r, http.StatusNotFound, "")
 		return
 	}
+	if filename == storage.RawFlashFilename {
+		recordings, err := downloadRecordings(s.storagePath, sessionID, f, info.Size())
+		if err != nil {
+			s.sendError(w, r, http.StatusConflict, "Could not confirm the log size against its saved manifest. Keep the controller data and check the Pi storage.")
+			return
+		}
+		filename = bblDownloadName(sessionID, recordings)
+	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	w.Header().Set("ETag", fmt.Sprintf(`"%x-%x"`, info.ModTime().UnixNano(), info.Size()))
 	// ServeContent handles suffix/multipart ranges, HEAD and conditional requests.
-	http.ServeContent(w, r, filename, info.ModTime(), f)
+	http.ServeContent(newDownloadResponse(w), r, filename, info.ModTime(), f)
 }
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
@@ -468,6 +490,10 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := strings.TrimPrefix(r.URL.Path, "/sessions/")
 	if err := storage.DeleteSession(s.storagePath, sessionID); err != nil {
+		if errors.Is(err, storage.ErrSessionBusy) {
+			s.sendError(w, r, http.StatusConflict, "This recording is in use. Wait for the transfer to finish before deleting it.")
+			return
+		}
 		s.sendError(w, r, http.StatusBadRequest, "")
 		return
 	}

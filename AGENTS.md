@@ -1,10 +1,12 @@
 # LogFalcon — Agent Guide
 
 ## Go project — not Python
-The active codebase is **all Go** under `cmd/logfalcon/` and `internal/`. Go module: `github.com/proeugene/logfalcon`, requires **Go 1.27 (tested patch 1.27.3)**. Do not reintroduce Python runtime/build dependencies.
+The application and maintainer tools use Go under `cmd/` and `internal/`. The module `github.com/proeugene/logfalcon` requires **Go 1.27 (tested patch 1.27.4)**. The Pi image also ships shell helpers and systemd units. Do not reintroduce Python runtime/build dependencies.
 
 ## Entrypoint
-`cmd/logfalcon/main.go` — two modes: `--web` (HTTP server with embedded templates) or `--port /dev/ttyACM0` (sync over serial). Version/commit injected via ldflags at build time (`main.Version`, `main.BuildCommit`).
+The appliance runs [one executable](cmd/logfalcon/main.go) in separate processes. Use `--web` for the dashboard and `--port /dev/ttyACM0` for serial collection. Service entry points also handle diagnostics, LED status, boot configuration, upgrade validation and privileged update recovery. Check the flag definitions and the calling [systemd units](system/) before changing behaviour. Build flags supply `main.Version` and `main.BuildCommit`.
+
+[cmd/update-package](cmd/update-package/main.go) is the maintainer/CI tool for signed offline updates. See [the update format and recovery procedure](docs/OFFLINE_UPDATES.md).
 
 ## Commands
 ```
@@ -19,23 +21,14 @@ make clean      # rm -rf bin/
 ## Tests
 Tests run without hardware, using serial/GPIO fakes and real temporary files. Linux-native installer integration is required in Linux CI; the macOS fixture adapts sed syntax. Run `go test -race -coverprofile=cover.out -covermode=atomic ./...` for CI-accurate coverage.
 
-## Single-binary architecture
-No monorepo. No packages published. Internal packages under `internal/`:
-- `config/` — TOML loader (search: `--config` flag → `/etc/logfalcon/logfalcon.toml` → `./config/logfalcon.toml` → defaults)
-- `msp/` — MSP v1/v2 framing, 14-state decoder, CRC, uncompressed serial client
-- `fc/` — FC detection (MSP handshake), version checking (too-old = hard error, too-new = amber warning)
-- `sync/` — 10-step state machine orchestrator; thread-safe status published atomically to `/run/logfalcon/status.json`; the separate web and LED services read it
-- `storage/` — session dirs (`fc_VARIANT_uid-XXXXXXXX/YYYY-MM-DD_HHMMSS/`), manifest.json, stream writer
-- `web/` — stdlib `net/http` server, embedded HTML templates in Go code (no JS framework), SSE for real-time progress, captive portal responses
-- `led/` — 6-state blink pattern controller (`sysfs` backend for Pi ACT LED, `gpio` stub)
-- `util/` — disk space helpers
+## Architecture
+Start with [the process map and copy/recovery ordering](docs/ARCHITECTURE.md). Follow a collection from `internal/fc` and `internal/msp` through `internal/sync` to `internal/storage`. The web and LED services read the shared status file. Browser and boot changes use `internal/settings`; signed packages and activation use `internal/update`.
 
 ## Web UI quirks
-- Templates are Go string constants in `internal/web/templates.go` — not separate files.
-- CSRF token generated at server start, required for DELETE and POST /settings.
+- Templates and client-side behaviour live in Go files under `internal/web/`. Route registration is in [server.go](internal/web/server.go). The dashboard polls `/status`; `/events` also exposes an SSE stream.
+- Mutating browser routes require the server's CSRF token. The local hotspot is the access boundary.
 - Captive portal paths respond at `/hotspot-detect.html`, `/generate_204`, `/ncsi.txt`, etc. (iOS/Android/Windows compatibility).
 - Health endpoint at `GET /health` returns JSON with storage, hotspot, and shared sync status.
-- SSE endpoint at `GET /events` streams sync status every 2 seconds.
 
 ## SD card image build
 Uses [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker. Run `bash pi-gen/build.sh` from the repository root (requires Docker on macOS or Linux). The wrapper provides Linux tools, source checks, image shrinking/inspection, compression and checksums; `--check` stops before the OS-image build. Release CI builds and uploads images on `v*` tags via `.github/workflows/release.yml`.
@@ -46,7 +39,7 @@ Uses [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker. Run `bash pi-gen/
 - **LED**: boot LED service runs during startup, dedicated status LED service owns sysfs and distinguishes success/error; async diagnostics export runs after sync
 
 ## CI pipeline
-`.github/workflows/go-ci.yml`: lint → test (with race detector) → build (arm6, arm64, amd64). `.github/workflows/release.yml` handles tag releases, including binaries, SD card image artifacts, and checksums. Dependabot updates Go deps and GitHub Actions weekly.
+[Go CI](.github/workflows/go-ci.yml) runs lint, tests and cross-builds as separate jobs. [Security](.github/workflows/security.yml) runs govulncheck and CodeQL. [Release](.github/workflows/release.yml) builds the tag's binaries, SD image and checksums.
 
 ## Config defaults (from `internal/config/config.go`)
 - Baud: 921600, chunk: 4096, erase timeout: 120s
@@ -57,7 +50,7 @@ Uses [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker. Run `bash pi-gen/
 ## Diagnostics and acceptance
 - New images default to UK English, UK keyboard and Europe/London timezone.
 - Persistent journald: approximately 50 MiB/seven days. Debug metadata is enabled by default (`DEBUG=true`); use `DEBUG=false` to disable it.
-- `--diagnostics start|export|stop` emits a bounded, redacted `LOGFALCON-DIAGNOSTICS/latest.json` on the mounted FAT boot partition.
+- `--diagnostics start` and `stop` record lifecycle events. The export service runs `--diagnostics export` to write bounded, redacted `LOGFALCON-DIAGNOSTICS/latest.json` on the mounted FAT boot partition.
 - See `DEVELOPMENT_TESTING.md`; automated tests are not physical image/Wi-Fi/FC acceptance.
 - iNav automatic copying is blocked pending validation of its current dataflash wire layout.
 
@@ -70,7 +63,7 @@ Uses [pi-gen](https://github.com/RPi-Distro/pi-gen) in Docker. Run `bash pi-gen/
 - Use storage-rooted file handles for untrusted session paths. Never use string-prefix containment checks.
 - Browser and boot settings share the settings lock/undo journal. Record boot applied hash only after confirmed restart; failed recovery must block changes and remain retryable.
 - Preserve credentials, country, debug and application settings during upgrades. Do not reset missing/incomplete upgrade configuration to launch defaults.
-- Only the dedicated service drives sysfs LEDs. Missing status means waiting, not confirmed readiness; corrupt/stale status cannot imply completion.
+- The boot helper owns the ACT LED during startup. The status service stops it before taking ownership. Missing status means waiting; corrupt or stale status cannot imply completion.
 - Debug may log operation metadata, never passwords or MSP payloads. Keep journal/export bounds and review diagnostics before sharing.
 - Keep binaries, integration assets, source identity and checksums on one release commit. Validate downloads before machine changes. Do not fetch fallback assets from main.
 

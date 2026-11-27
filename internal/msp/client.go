@@ -19,9 +19,11 @@ type SerialPort interface {
 // Error is a general MSP error.
 type Error struct {
 	Message string
+	Cause   error
 }
 
 func (e *Error) Error() string { return e.Message }
+func (e *Error) Unwrap() error { return e.Cause }
 
 // TimeoutError indicates a response was not received within the deadline.
 type TimeoutError struct {
@@ -103,7 +105,7 @@ func (c *Client) Receive(code uint16) (*Frame, error) {
 	for time.Now().Before(deadline) {
 		n, err := c.port.Read(buf)
 		if err != nil && err != io.EOF {
-			return nil, &Error{Message: fmt.Sprintf("read error: %v", err)}
+			return nil, &Error{Message: fmt.Sprintf("read error: %v", err), Cause: err}
 		}
 		if n > 0 {
 			c.decoder.Feed(buf[:n])
@@ -314,14 +316,6 @@ func (c *Client) ReceiveFlashReadResponse() (address uint32, data []byte, err er
 	}
 
 	return address, data, nil
-}
-
-// ReadFlashChunk sends a flash read request and returns the parsed response.
-func (c *Client) ReadFlashChunk(address uint32, size uint16, compression bool) (uint32, []byte, error) {
-	if err := c.SendFlashReadRequest(address, size, compression); err != nil {
-		return 0, nil, err
-	}
-	return c.ReceiveFlashReadResponse()
 }
 
 // EraseFlash sends MSP_DATAFLASH_ERASE (fire-and-forget, no response expected).

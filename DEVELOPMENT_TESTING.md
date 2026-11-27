@@ -515,3 +515,326 @@ No full cold/warm SD image build, remote Actions execution or physical Pi test
 was performed for this change. The first real development image build must
 populate the cache; a second run is needed to measure the actual saving. Main
 and release images still require their fresh full build and physical acceptance.
+
+## Reliability and startup candidate — 10 November 2026
+
+This phase targets Pi Zero W and Pi Zero 2 W equally, with offline collection
+working without a phone. Source changes do not establish boot speed, Wi-Fi
+readiness, controller compatibility or power-loss behaviour on either model.
+
+Implemented in this working tree:
+
+- Canonical polkit policy replacement and removal of the obsolete updater name.
+  Signed activation journals both paths for rollback; both bootstrap installers
+  also remove the obsolete policy after installing the canonical one.
+- Signed activation reloads systemd/udev and refreshes running journald/LED and
+  web processes. Status requests reboot for boot-only integration and clears the
+  reminder only on a different boot with matching application health. An old
+  worker installing its first revised release still executes its old activation
+  logic; follow the transition instructions in docs/OFFLINE_UPDATES.md.
+- Go CI runs on every branch push. Individual and selected-ZIP downloads renew
+  bounded write deadlines, retaining range/HEAD behaviour and stall limits.
+- Read-only USB/MSP readiness probes replace the fixed three-second delay.
+  Unchanged, confirmed boot inputs use idempotent hostapd start; failed recovery
+  still blocks startup. Copy/web no longer wait for the optional diagnostics
+  lifecycle service. Debug/journal collection remains enabled and bounded.
+- The existing completion panel identifies the saved recording and its recorded
+  retention outcome. Known failure codes give short recovery instructions.
+
+Verification on the candidate working tree:
+
+- Before-fix regression failures reproduced the canonical/obsolete policy
+  mismatch, missing activation commands, the individual-download cutoff and
+  redundant restart of unchanged boot settings. The bootstrap fixture also
+  reproduced the stale policy left by the source installer.
+- Full macOS race/coverage suite passed (70.7% total statement coverage), as did
+  vet and the pinned default golangci-lint 2.15.0 on native and Linux targets.
+- Full Linux race suite and vet passed in the existing Docker builder, including
+  the root/service-account permission regression and native installer fixtures.
+  Linux ARM6, ARM64 and AMD64 builds and the native macOS build passed.
+- Twenty-second bounded decoder fuzzing passed (1,684,401 executions).
+  govulncheck 1.9.0 found no affected code or imported-package vulnerabilities;
+  one required-module advisory was reported as uncalled.
+- ShellCheck passed for the touched scripts and configuration helpers;
+  actionlint passed for the changed CI workflow. Whitespace checks passed.
+- Rendering/API tests cover completion context, escaped controller identity,
+  exact recording links, uncertain outcomes and recognised recovery guidance.
+  A synthetic-data browser preview was prepared, but interactive verification
+  was not completed: sandbox socket binding was denied and the subsequent
+  server-start approval was aborted. No live browser result is claimed.
+
+These tests use fake controllers, temporary files and stubbed system commands;
+they do not prove real systemd activation, USB readiness, LED patterns or power
+loss behaviour. At this automated-check checkpoint, no complete new SD image or
+physical Pi/controller test had been run. No boot-time saving has been measured
+on either Pi model.
+
+### Exact candidate image built — 10 November 2026
+
+The subsequent full build completed in
+`pi-gen/deploy/20261110T175342Z-27921/`. Its build log reports successful image
+inspection with no obvious configuration issues and a compressed size of
+497,100,748 bytes, below the 600 MiB limit. This is a clean OS build (cache
+reused: 0), Raspberry Pi OS Bookworm armhf with the ARM6 application binary;
+the same candidate image is to be evaluated on both Pi models.
+
+- Image: `2026-11-10-logfalcon.img.xz`
+- Image SHA-256:
+  `814a95dbd66b87110aa51f1f3f5edf4afa4d16a9999c481cb628b7ea24418235`
+- Base commit: `8276d66ffa88c460b2c27862a9421a93fcd39ca8`
+- Version: `v.0.4.8-rc1-4-g8276d66-dirty` (includes the local candidate changes).
+- Source manifest SHA-256:
+  `c8cbc91bfb8b913e50e00ef60f58dc65c76516c2fd56f875be8fa88a4e0aae69`
+
+Independent local verification passed for all four entries in `checksums.txt`,
+and every entry in `source-files.sha256` matched the current checkout. Preserve
+the image, `.info`, `build-info.txt`, source manifest, checksums and `build.log`
+together. This records a built and inspected candidate, not physical acceptance:
+neither Pi model has a recorded boot/copy result or measured timing improvement
+for this image yet.
+
+### First field report — 11 November 2026
+
+The operator reported a short first boot (untimed), a slow waiting blink, and a
+fast blink while collecting from a DARKSTAR20. Safari reached the hotspot. The
+in-progress screen showed 1.0 of 8.0 MB at 62 KB/s, with 115 seconds estimated
+remaining. The operator subsequently saw completion and repeated blinking.
+After unplugging the controller the LED went dark and Wi-Fi became inaccessible;
+the operator cycled the Pi power connection. Cause and actual transfer duration
+are unknown. The pilot subsequently downloaded the saved BBL and opened it in
+Blackbox Explorer. The 8,388,608-byte download contains eight DARKSTAR20 log
+headers (Betaflight 2026.6.2), all with year-zero start times. The exported
+previous-boot journal shows a separate failed read at offset 106496 (serial
+port closed), followed about 33 seconds later by a Wi-Fi client association.
+Boot LED writes to a missing led0 brightness path continued past 190 seconds
+of uptime. The previous lifecycle was incomplete and both kernel sections
+were unavailable. This export cannot identify the cause of the reported outage.
+Phone-free completion, the precise success
+pattern and retention on the FC still need confirmation.
+
+### Exact-image baseline and comparison
+
+1. Keep the baseline and candidate as separate artifacts/cards. The pre-change
+   baseline is commit `8276d66`; record its full commit, image SHA-256 and package
+   inputs. If no baseline image exists, build it in an isolated checkout without
+   resetting this working tree. For the candidate, from the repository root run
+   `bash pi-gen/build.sh --clean`. Keep the generated `build-info.txt`, source
+   hashes, package `.info`, `checksums.txt` and build log with the image. A dirty
+   candidate must be identified by those input hashes as well as its base commit.
+   In the output folder, run `shasum -a 256 -c checksums.txt` before flashing.
+2. Flash the exact image to a spare card. Record Pi model, card, supply, cable,
+   FC board/firmware, byte count and image hash. Keep erase and storage cleanup
+   disabled in the effective application configuration. Use the same retained
+   controller dump for baseline/candidate comparisons; do not infer speed from
+   different file sizes or from builds with different OS package inputs.
+3. On **each** Pi model, run at least five ordinary cold boots with the FC
+   attached at power-on, then five trials plugging the FC into an already-running
+   Pi. Test first boot/device identity, changed boot settings and pending recovery
+   separately; do not mix those results into the ordinary-boot sample. Keep SD
+   type, supply, cable and FC firmware constant, and note unavoidable differences.
+4. Use a timed video or an external power timestamp for **power applied → saved
+   indication**. OS logs omit early firmware/kernel startup. Record separate
+   checkpoints: MSP controller ready, copy started, durable publication, completed
+   LED indication, hotspot visible, phone joined and dashboard loaded. A listening
+   HTTP socket is not evidence that the hotspot or phone is ready. With no phone
+   connected, copying and the LED must still complete correctly.
+5. On the Pi, capture the actual units (replace ttyACM0 if necessary):
+
+   ```sh
+   systemd-analyze critical-chain logfalcon@ttyACM0.service logfalcon-web.service
+   sudo journalctl -b -o short-monotonic --no-pager \
+     -u 'logfalcon*' -u hostapd -u systemd-journal-flush.service
+   ```
+
+   Structured application messages include `checkpoint`, `boot_id`, `uptime_sec`
+   and, for copies, `transfer_id` and `elapsed_sec`. Settings checkpoints are
+   `boot_settings_start`/`boot_settings_ready`; the web checkpoint is
+   `http_listening`. Copy checkpoints include `started`, `controller_ready`,
+   `identified`, `flash_ready`, `copy_started`, `copy_flushed`, `copy_verified`,
+   `copy_published` and `finished`; optional erasure adds its own checkpoints.
+   `copy_published` precedes any optional erase; use successful `finished` plus
+   the observed LED for the complete collection outcome. Retain failure trials.
+6. Download the exact recording linked by the completion panel, compare bytes
+   and saved hash, and open the real BBL in Betaflight's Blackbox Viewer. Verify
+   retained controller data, interruption/reconnect, low-space guidance, stale
+   status, settings recovery, slow single/range/ZIP downloads, and update/rollback
+   behaviour. Follow the full acceptance matrix above, including diagnostics
+   retrieval and one independent pilot's attempt; timing alone is not acceptance.
+
+Record median and slowest observed timings, failures/attempts and CPU/RAM where
+available **separately for each model and scenario**. Do not claim a percentile
+from five samples. Set the next performance target from this baseline. Removing
+a three-second fixed wait, avoiding a redundant AP restart and removing optional
+startup dependencies are implementation facts; their end-to-end savings remain
+unmeasured. Separating configuration recovery from Wi-Fi activation entirely, or
+combining first-boot changes into one restart, remains a hypothesis for a later
+measured change. Neither is required for this candidate.
+
+### LED, diagnostics and recording identification candidate — 11 November 2026
+
+Read-only inspection of the mounted field snapshot confirmed useful service
+sections and empty boot-list/kernel sections. Re-running its exact commands in
+the existing Bookworm tools container (systemd 252) reproduced unsupported
+`--no-legend` and `--kernel` options. The exporter already runs as root; adding
+privileges would not fix those argument errors. It now uses supported arguments,
+retains each useful/partial section independently and records section-specific
+stderr, empty-history or two-second timeout reasons. Per-section 256 KiB,
+snapshot 2 MiB, redaction and the separate low-priority export service remain.
+The separately reported post-success outage still has no established cause.
+
+The boot helper hardcoded `led0`, while the Go backend also recognised `ACT`.
+Both now discover those names; missing/disappearing attributes disable writes
+without repeated journal failures. The boot helper starts before `sysinit.target`;
+the status service starts afterwards and synchronously stops/reaps the boot
+owner before launching the status process. No startup conflicts or direct
+boot/status ordering edge can discard wanted jobs or obstruct that stop job.
+Boot stop and status start have three/ten-second bounds respectively; restarting
+status does not restart the boot helper. Waiting remains the slow
+pulse, work the fast blink, saved success the persistent double blink and error
+SOS. No phone-free hardware success is claimed from these source changes.
+
+Read-only inspection of the pilot's 8,388,608-byte dump found eight DARKSTAR20
+headers, all with year-zero times. The file and diagnostic snapshot remain outside
+Git. New collection manifests retain optional per-header craft/start evidence
+from the existing write stream: at most 256 headers, 64 KiB per header and 8 KiB
+per line. Valid start strings preserve timezone offsets; byte offsets locate the
+headers. The final retained header is completed across writes even after reaching
+the 256-header limit; later headers are ignored. Unknown times never become
+collection times. Existing recording details
+show known starts and an unknown count. Individual attachment names use safe craft
+text plus a stable session-derived identifier; repeated clocks and older sessions
+have focused regressions. File bytes, storage layout, routes and ZIP session
+folders are unchanged. Parsing supplies no input to verification/erase decisions.
+
+Automated checks passed: full Go race/coverage suite, final changed-package race
+reruns, Go vet, Linux installer/integration and changed-package tests in the
+Bookworm tools container, ShellCheck for both installers and boot/Wi-Fi/LED
+helpers, native macOS and Linux ARM6/ARM64/AMD64 builds, and diff whitespace
+checks. Following review, targeted race/Linux regressions cover final-header
+timestamps split across writes and conflict-free handover dependencies.
+An isolated Bookworm systemd 252 manager running as container PID 1 also passed
+`systemd-analyze verify`, simultaneous wanted boot/status/web startup through a
+fresh fixture sysinit target, manual status restart and failure-driven automatic
+restart after killing its main process. Original unit ordering/start semantics
+were retained with fixture commands; an exclusive file lock represented LED
+ownership. Events were boot started, boot stopped, then status started. Web
+became active; status remained active and boot inactive after both restarts.
+This checks manager ordering and process handover, not a Pi boot, its kernel
+journal or ACT hardware.
+
+Shortest exact-image acceptance, repeated separately on **Pi Zero W** and
+**Pi Zero 2 W** with the same retained FC dump, erase/cleanup disabled:
+
+1. Record candidate image checksum/source hashes, board, power supply, SD card and
+   FC firmware. Cold boot without a phone or FC: slow waiting pulse. Connect FC:
+   fast work blink, then persistent double blink after the saved-copy check.
+2. Unplug FC and wait at least 60 seconds: double blink persists. Join Wi-Fi,
+   download the BBL, verify its hash and open it in Blackbox Viewer. Reconnect the
+   retained dump and download the second copy: distinct craft-labelled filenames,
+   unchanged bytes, eight unknown start times for this field dump.
+3. Interrupt a further copy by unplugging USB: SOS, no success indication and no
+   erase. Reboot and retrieve diagnostics: boot list and current/previous kernel
+   sections, or a specific reason for unavailable history; no recurring missing
+   LED-path errors. Confirm boot helper is inactive while status owner is active.
+
+These physical steps have not been run for this candidate. Copy-speed tuning is
+left to Eugene after comparing the same retained dump with Betaflight Configurator.
+
+### Field package review, 18 November 2026
+
+Before edits, all 120 hashes in the ARM6 field package's source manifest matched
+the checkout at base `8276d66`. Its signature and artifact checksums verified.
+After the review, 20 listed files differed. Rebuild the field package before
+testing these fixes. The original package and its public key remain together in
+`bin/field-update-AWIqgogQ/`.
+
+The fake controller reproduced deletion of the saved session during an opted-in
+erase. The same regression now retains the verified bytes through erase and
+permits deletion afterwards. Other regressions cover recovery blocking a new
+plug-in, boot health polling competing with USB collection, damaged status,
+truncated downloads, adjacent recording headers and legacy collection times.
+At 390 × 844, Chromium reproduced a previous success persisting through stalled
+HTTP responses. The revised dashboard showed unavailable status and recovered
+when responses resumed. A stalled recording list allowed live polling to continue.
+
+The full macOS Go 1.27.4 race suite passed with 72.1% statement coverage. The
+Bookworm Go 1.27.3 race suite passed, including Linux installer and updater
+permission fixtures. The final web changes also passed on Bookworm. Vet,
+default lint from the v2.15.0 source, ShellCheck, 20-second decoder fuzzing,
+native and Linux ARM6/ARM64/AMD64 builds passed. These checks used synthetic
+data. The post-success LED and Wi-Fi outage still needs a timed unplug trial on
+both Pi models as described above. No new image, Pi install or rollback was tested.
+
+### Field-key SD image, 18 November 2026
+
+The 32-bit Bookworm ARM6 candidate for Zero W and Zero 2 W is
+`pi-gen/deploy/20261118T164945Z-5877/2026-11-18-logfalcon.img.xz`.
+Image SHA-256 is `4c1c89b2970a4356bca3b77f37d196255c6683e52766ab27c2b80d9d709c4cce`.
+The Go 1.27.3 build stopped on GO-2026-6859. The Go 1.27.4 build passed
+race tests, vet and govulncheck (zero reachable findings). Mounted-image
+inspection compared the installed field-2026.pub with the source key and
+identified the 32-bit ARM executable. The host independently checked XZ
+integrity, all four artifact hashes and the source manifest against the
+checkout. Physical boot and Wi-Fi update acceptance remain open on both models.
+
+### Blackbox capture check, 25 November 2026
+
+The local Go 1.27.4 race suite passed with 73.7% statement coverage. Native
+Go vet passed. Default golangci-lint v2.15.0 passed on macOS and for Linux AMD64.
+Both Pi builds passed, with Linux ARMv6 and ARM64 confirmed in the Go build
+metadata. The copy tests cover retained references, a failed intervening copy,
+exact repeats, a verified append, changed padding, an unconfirmed erase and
+an unavailable capture-check file during both retention and opted-in erase.
+
+The retained 8,388,608-byte DARKSTAR20 BBL was replayed twice on macOS through
+the simulated MSP controller. All eight recording headers declared filtered
+and unfiltered gyro on X, Y and Z. A separate read of their field-name lines
+agreed. The second copy identified the first as its identical reference.
+This used the pilot’s original file as read-only input and temporary storage.
+
+Chrome at a 390 × 844 viewport showed the check on initial load, removed the
+previous result during identification and displayed the next result through
+live polling. A synthetic appended header declared filtered gyro with unfiltered
+gyro omitted. Its details and reference links opened the intended sessions,
+and the original download matched the fixture bytes.
+
+Physical acceptance remains open. On an exact candidate image, keep erase and
+cleanup off and collect the retained DARKSTAR20 flash twice. Then use a test
+controller with spare flash, collect a baseline and add one recording with
+unfiltered gyro logging omitted. Have a pilot identify the added recording on
+the phone and cross-check its fields in Betaflight’s Viewer. Record the image,
+board and what the pilot decided to do before the next pack.
+
+### Local code and appliance audit, 27 November 2026
+
+The checkout was `test` at `8276d66ffa88c460b2c27862a9421a93fcd39ca8` with
+uncommitted changes. The SHA-256 of the 148-entry source manifest for the
+builder's input paths was
+`097ded241e0d8cdb09066dc66be7834d104e56ec8461842905ad7b92938d25f0`.
+The four checksums from the 18 November image still verified. That image
+predates these fixes and has a different source manifest.
+
+Two regressions failed against the incoming source. A simulated controller
+that appended data during copying received an erase command. An opted-in
+storage cleanup removed files outside completed recording directories. The
+repaired candidate kept the saved copy and sent zero erase commands when flash
+use grew. Cleanup retained unrelated files, partial copies and recordings with
+a length mismatch. The installer fixtures also cover an existing appliance
+whose settings have disappeared and an upgrade with shutdown already queued.
+
+| Check | Observed result |
+|---|---|
+| macOS ARM64, Go 1.27.4 | Fresh race/coverage suite passed, 74.0% of statements. Vet passed. |
+| Bookworm Linux ARM64, Go 1.27.4 | Race tests for integration, settings, update, storage and sync passed on a fixed source snapshot. The compiled updater permissions test passed as root for both worker-first and service-first lock acquisition. |
+| Default golangci-lint 2.15.0 | Zero issues on native macOS and Linux AMD64 target. |
+| govulncheck 1.9.0, 24 November database | Zero reachable findings on macOS ARM64 and Linux ARMv6. The indirect `x/sys` version had a Windows-only advisory, GO-2026-5024. |
+| Protocol and build | Final 20-second decoder fuzz run passed. Native macOS, Linux ARM6, ARM64 and AMD64 application binaries and the native update-package tool built. |
+| Scripts and workflows | ShellCheck passed on all 16 shell scripts and actionlint passed. The revised pull-request permissions step was exercised locally in its compiled-fixture form. |
+| Dashboard | Headless Chrome at a 390 × 844 window rendered a fixture recording link. Requesting that link returned the three original synthetic bytes as an attachment. |
+
+Physical acceptance remains open. On a spare card, record the **new image
+checksum**, Pi model and Betaflight version. With erasure and cleanup off,
+collect a retained recording, unplug, check that Wi-Fi stays available and
+open the downloaded file in Blackbox Viewer. Record the outcome on each Pi
+model for which compatibility will be claimed and obtain one independent
+pilot's result.

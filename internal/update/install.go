@@ -25,9 +25,15 @@ const Inbox = "/var/lib/logfalcon-update/inbox"
 const StateDir = "/var/lib/logfalcon-update/state"
 const KeyDir = "/usr/share/logfalcon/update-keys"
 
+// Earlier offline workers installed a second copy instead of replacing the
+// initial install's policy. Leaving it behind could retain revoked permissions.
+const obsoletePolicyPath = "/etc/polkit-1/rules.d/50-logfalcon.rules"
+
 type State struct {
 	Phase, Version, Commit, Message string
 	Files                           []string
+	RebootRequired                  bool
+	ActivatedBootID                 string
 }
 
 // Installer's hooks allow crash/health/space tests on a temporary filesystem.
@@ -36,17 +42,36 @@ type Installer struct {
 	Restart                                                        func() error
 	Healthy                                                        func(Manifest) error
 	Space                                                          func(int64) error
+	BootID                                                         func() string
 }
 
 func System(current string) Installer {
 	return Installer{StateDir: StateDir, RuntimeDir: "/run/logfalcon", Inbox: Inbox, Keys: KeyDir, Current: current, Architecture: ABI(),
+		BootID: func() string {
+			b, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(string(b))
+		},
 		Restart: func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			if err := exec.CommandContext(ctx, "systemctl", "daemon-reload").Run(); err != nil {
-				return err
+			// Refresh the running consumers of the installed assets before checking
+			// application health. Do not restart boot-only services or the path/worker
+			// driving this transaction: their changes take effect after reboot.
+			for _, command := range [][]string{
+				{"systemctl", "daemon-reload"},
+				{"udevadm", "control", "--reload-rules"},
+				{"systemctl", "try-restart", "systemd-journald.service"},
+				{"systemctl", "try-restart", "logfalcon-ready-led.service"},
+				{"systemctl", "restart", "logfalcon-web.service"},
+			} {
+				if err := exec.CommandContext(ctx, command[0], command[1:]...).Run(); err != nil {
+					return fmt.Errorf("activate %s: %w", strings.Join(command, " "), err)
+				}
 			}
-			return exec.CommandContext(ctx, "systemctl", "restart", "logfalcon-web.service").Run()
+			return nil
 		},
 		Healthy: func(m Manifest) error {
 			cfg, err := config.Load("/etc/logfalcon/logfalcon.toml")
@@ -165,10 +190,7 @@ func (i Installer) restore(s State) error {
 			if _, e := os.Stat(backup + ".absent"); e != nil {
 				return errors.New("rollback backup missing")
 			}
-			err = os.Remove(i.dest(path))
-			if errors.Is(err, os.ErrNotExist) {
-				err = nil
-			}
+			err = removeDurably(i.dest(path))
 		} else if err == nil {
 			err = replace(i.dest(path), b, mode(path))
 		}
@@ -223,9 +245,72 @@ func replace(path string, b []byte, perm os.FileMode) error {
 	defer func() { _ = d.Close() }()
 	return d.Sync()
 }
+
+func removeDurably(path string) error {
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	d, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = d.Close() }()
+	return d.Sync()
+}
+
+func (i Installer) confirmReboot(s State) error {
+	if !s.RebootRequired || s.ActivatedBootID == "" || i.BootID == nil {
+		return nil
+	}
+	if boot := i.BootID(); boot == "" || boot == s.ActivatedBootID {
+		return nil
+	}
+	if i.Healthy == nil {
+		return errors.New("post-reboot health confirmation unavailable")
+	}
+	if err := i.Healthy(Manifest{Version: s.Version, Commit: s.Commit}); err != nil {
+		return fmt.Errorf("post-reboot health confirmation: %w", err)
+	}
+	s.RebootRequired = false
+	s.Message = "Reboot completed; installed application health confirmed."
+	return i.save(s)
+}
+
 func (i Installer) Run() error {
 	if err := os.MkdirAll(i.StateDir, 0755); err != nil {
 		return err
+	}
+	// Serialise worker invocations, including reboot confirmation, independently
+	// of collection. Only activation and recovery require the transfer lock.
+	dir, err := os.Open(i.StateDir)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	if err := syscall.Flock(int(dir.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return fmt.Errorf("lock update state: %w", err)
+	}
+	previous := ReadState(i.StateDir)
+	if previous.Message == "Update state unreadable; inspect diagnostics." {
+		return errors.New(previous.Message)
+	}
+	request := filepath.Join(i.Inbox, "request")
+	if previous.Phase != "activating" && previous.Phase != "restarting" {
+		if _, err := os.Stat(request); errors.Is(err, os.ErrNotExist) {
+			switch previous.Phase {
+			case "validating":
+				return i.save(State{Phase: "failed", Message: "Validation interrupted before activation. Upload again."})
+			case "success":
+				return i.confirmReboot(previous)
+			default:
+				return nil
+			}
+		} else if err != nil {
+			return err
+		}
 	}
 	lock, err := lfsync.AcquireTransferLock(i.RuntimeDir)
 	if err != nil {
@@ -262,25 +347,12 @@ func (i Installer) Run() error {
 	if _, err := os.Stat(filepath.Join(i.RuntimeDir, "shutdown.pending")); !errors.Is(err, os.ErrNotExist) {
 		return errors.New("shutdown pending or reservation unreadable")
 	}
-	previous := ReadState(i.StateDir)
-	if previous.Message == "Update state unreadable; inspect diagnostics." {
-		return errors.New(previous.Message)
-	}
 	if previous.Phase == "activating" || previous.Phase == "restarting" {
 		if err = i.restore(previous); err != nil {
 			return fmt.Errorf("update recovery pending: %w", err)
 		}
-		_ = os.Remove(filepath.Join(i.Inbox, "request"))
+		_ = os.Remove(request)
 		return nil
-	}
-	request := filepath.Join(i.Inbox, "request")
-	if _, err = os.Stat(request); errors.Is(err, os.ErrNotExist) {
-		if previous.Phase == "validating" {
-			return i.save(State{Phase: "failed", Message: "Validation interrupted before activation. Upload again."})
-		}
-		return nil
-	} else if err != nil {
-		return err
 	}
 	fail := func(err error) error {
 		_ = os.Remove(request)
@@ -358,6 +430,9 @@ func (i Installer) Run() error {
 		}
 		paths[path] = b
 	}
+	// A deletion is journalled exactly like a replacement, including the absent
+	// marker. Recovery can restore either pre-migration policy layout unchanged.
+	paths[obsoletePolicyPath] = nil
 	s := State{Phase: "activating", Version: pkg.Manifest.Version, Commit: pkg.Manifest.Commit, Message: "Installing verified release"}
 	for p := range paths {
 		s.Files = append(s.Files, p)
@@ -398,7 +473,12 @@ func (i Installer) Run() error {
 		if p == "/opt/logfalcon/updater" {
 			continue
 		}
-		if err = replace(i.dest(p), paths[p], mode(p)); err != nil {
+		if p == obsoletePolicyPath {
+			err = removeDurably(i.dest(p))
+		} else {
+			err = replace(i.dest(p), paths[p], mode(p))
+		}
+		if err != nil {
 			return rollback(err)
 		}
 	}
@@ -422,6 +502,10 @@ func (i Installer) Run() error {
 		return rollback(err)
 	}
 	s.Phase = "success"
-	s.Message = "Installed release confirmed healthy"
+	s.RebootRequired = true
+	if i.BootID != nil {
+		s.ActivatedBootID = i.BootID()
+	}
+	s.Message = "Application and live services updated. Reboot to apply boot-only integration changes."
 	return i.save(s)
 }

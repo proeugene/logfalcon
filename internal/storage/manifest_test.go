@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,6 +256,51 @@ func TestCleanupNotNeeded(t *testing.T) {
 	}
 	if len(sessions) != 1 {
 		t.Errorf("got %d sessions, want 1", len(sessions))
+	}
+}
+
+func TestCleanupOnlyRemovesPublishedRecordings(t *testing.T) {
+	root := t.TempDir()
+	info := testFCInfo()
+	dir, err := MakeSessionDir(root, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("saved recording")
+	hash := fmt.Sprintf("%x", sha256.Sum256(data))
+	write := func(dir, name string, b []byte) {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy := filepath.Join(filepath.Dir(dir), "2024-06-01_100000")
+	truncated := filepath.Join(filepath.Dir(dir), "2024-06-02_100000")
+	partial := filepath.Join(filepath.Dir(dir), "2024-06-03_100000")
+	unrelated := filepath.Join(root, "photos", "holiday")
+	write(unrelated, "original.jpg", data)
+	write(partial, RawFlashFilename+".partial", data)
+	for _, saved := range []string{dir, legacy, truncated} {
+		write(saved, RawFlashFilename, data)
+		if err := WriteManifest(root, saved, info, hash, int64(len(data)), false, false, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(truncated, RawFlashFilename, data[:1])
+	deleted, err := CleanupOldestSessions(root, math.MaxInt64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 2 || filepath.Join(root, deleted[0]) != legacy || filepath.Join(root, deleted[1]) != dir {
+		t.Fatalf("expected only the two completed recordings, oldest first; removed %v", deleted)
+	}
+	for _, file := range []string{filepath.Join(unrelated, "original.jpg"), filepath.Join(partial, RawFlashFilename+".partial"), filepath.Join(truncated, RawFlashFilename)} {
+		if _, err := os.Stat(file); err != nil {
+			t.Fatalf("cleanup lost %s: %v", file, err)
+		}
 	}
 }
 

@@ -1,17 +1,17 @@
 # Heartbeat LED during boot — lets the pilot know the Pi is alive.
-# Automatically stopped when logfalcon-web.service starts.
+# Starts before sysinit; synchronously stopped by the status LED service.
 # Install to: /etc/systemd/system/logfalcon-boot-led.service
 
 [Unit]
 Description=LogFalcon Boot LED Heartbeat
 DefaultDependencies=no
-Before=logfalcon-web.service
-Conflicts=logfalcon-web.service
+Before=sysinit.target
 
 [Service]
 Type=simple
 ExecStart=/opt/logfalcon/boot-led.sh
 Restart=no
+TimeoutStopSec=3s
 
 [Install]
 WantedBy=sysinit.target

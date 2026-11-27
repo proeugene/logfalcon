@@ -49,3 +49,22 @@ func TestInstallationAssetsStayConsistent(t *testing.T) {
 		t.Fatal("installer embeds divergent service units")
 	}
 }
+
+func TestUninstallerRemovesApplianceUnits(t *testing.T) {
+	script, err := os.ReadFile("../../scripts/uninstall.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	units, err := os.ReadDir("../../system")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, unit := range units {
+		switch filepath.Ext(unit.Name()) {
+		case ".service", ".path", ".timer":
+			if !strings.Contains(string(script), "rm -f /etc/systemd/system/"+unit.Name()+"\n") {
+				t.Errorf("uninstaller omits %s", unit.Name())
+			}
+		}
+	}
+}

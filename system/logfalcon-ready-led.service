@@ -3,13 +3,16 @@
 
 [Unit]
 Description=LogFalcon Ready LED
-After=logfalcon-runtime.service logfalcon-config-apply.service
+After=sysinit.target logfalcon-runtime.service logfalcon-config-apply.service
 Requires=logfalcon-runtime.service
-Conflicts=logfalcon-boot-led.service
 
 [Service]
 Type=simple
+# sysinit ordering completes boot-helper startup first. No direct ordering edge
+# to that helper: its stop job must be able to run during this start job.
+ExecStartPre=/usr/bin/systemctl stop logfalcon-boot-led.service
 ExecStart=/opt/logfalcon/logfalcon --led-status
+TimeoutStartSec=10s
 Restart=on-failure
 RestartSec=3
 

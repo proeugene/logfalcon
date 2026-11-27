@@ -20,13 +20,17 @@ const (
 // and computes a running SHA-256 hash.
 type StreamWriter struct {
 	root           *os.Root
+	dir            *os.File
 	path           string
 	file           *os.File
 	buf            *bufio.Writer
 	hasher         hash.Hash
+	prefixLength   int64
+	prefixSHA256   string
 	bytesWritten   int64
 	lastSyncOffset int64
 	closed         bool
+	headers        headerParser
 }
 
 // NewStreamWriter creates parent directories if needed, opens the file for
@@ -57,7 +61,8 @@ func (w *StreamWriter) Write(data []byte) (int, error) {
 	}
 	n, err := w.buf.Write(data)
 	if n > 0 {
-		w.hasher.Write(data[:n])
+		w.headers.Write(data[:n])
+		w.hashBytes(data[:n])
 		w.bytesWritten += int64(n)
 
 		if w.bytesWritten-w.lastSyncOffset >= syncThreshold {
@@ -107,12 +112,7 @@ func (w *StreamWriter) Commit(path string) error {
 			return err
 		}
 		w.path = name
-		d, err := w.root.Open(".")
-		if err != nil {
-			return err
-		}
-		defer func() { _ = d.Close() }()
-		return d.Sync()
+		return w.dir.Sync()
 	}
 	if err := os.Rename(w.path, path); err != nil {
 		return err
@@ -135,6 +135,40 @@ func (w *StreamWriter) Abort() error {
 // BytesWritten returns the total number of bytes written so far.
 func (w *StreamWriter) BytesWritten() int64 {
 	return w.bytesWritten
+}
+
+// RecordingHeaders returns optional header evidence without affecting copying.
+func (w *StreamWriter) RecordingHeaders() []RecordingHeader {
+	return append([]RecordingHeader(nil), w.headers.recordings...)
+}
+
+// Once the parser reaches the entry limit, it cannot establish a total count.
+func (w *StreamWriter) CaptureIndexLimited() bool {
+	return len(w.headers.recordings) >= maxRecordingHeaders
+}
+
+// SetCapturePrefixLength selects the saved reference boundary before copying.
+func (w *StreamWriter) SetCapturePrefixLength(n int64) {
+	if w.bytesWritten == 0 {
+		w.prefixLength = n
+	}
+}
+
+func (w *StreamWriter) hashBytes(data []byte) {
+	// Snapshot the running whole-file hash at the reference boundary. Sum
+	// leaves its state intact, so each byte is hashed just once on this pass.
+	left := w.prefixLength - w.bytesWritten
+	if left > 0 && left <= int64(len(data)) {
+		w.hasher.Write(data[:left])
+		w.prefixSHA256 = w.SHA256Hex()
+		data = data[left:]
+	}
+	w.hasher.Write(data)
+}
+
+// CapturePrefixSHA256 is empty until all requested prefix bytes were written.
+func (w *StreamWriter) CapturePrefixSHA256() string {
+	return w.prefixSHA256
 }
 
 // SHA256Hex returns the hex-encoded SHA-256 digest of all data written.
@@ -172,17 +206,26 @@ func NewSessionWriter(storagePath, dir string) (*StreamWriter, error) {
 	if err != nil {
 		return nil, err
 	}
-	name := RawFlashFilename + ".partial"
-	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	locked, err := lockSessionDirectory(root)
 	if err != nil {
 		_ = root.Close()
 		return nil, err
 	}
-	w := &StreamWriter{root: root, path: name, file: f, hasher: sha256.New()}
+	name := RawFlashFilename + ".partial"
+	f, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		_ = locked.Close()
+		_ = root.Close()
+		return nil, err
+	}
+	w := &StreamWriter{root: root, dir: locked, path: name, file: f, hasher: sha256.New()}
 	w.buf = bufio.NewWriterSize(f, bufSize)
 	return w, nil
 }
 func (w *StreamWriter) Release() {
+	if w.dir != nil {
+		_ = w.dir.Close()
+	}
 	if w.root != nil {
 		_ = w.root.Close()
 	}

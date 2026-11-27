@@ -1,7 +1,8 @@
 [Unit]
 Description=LogFalcon boot and shutdown diagnostics
 After=local-fs.target systemd-journal-flush.service logfalcon-config-apply.service
-Before=logfalcon-web.service
+# Diagnostics must not delay copying or the dashboard. Journal export remains
+# asynchronous; the lifecycle service still runs and records clean shutdown.
 RequiresMountsFor=/var/lib/logfalcon /boot
 
 [Service]

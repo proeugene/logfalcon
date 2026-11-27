@@ -50,9 +50,11 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-# Establish upgrade state before generating or writing any defaults.
+# The executable and sync unit survive a lost configuration directory.
 UPGRADING=0
-if [[ -f "$CONFIG_DIR/logfalcon.toml" || -f "$CONFIG_DIR/hostapd.conf" || -f /etc/hostapd/hostapd.conf ]]; then
+if [[ -e "$INSTALL_DIR/logfalcon" || -e /etc/systemd/system/logfalcon@.service ||
+      -f "$CONFIG_DIR/logfalcon.toml" || -f "$CONFIG_DIR/hostapd.conf" ||
+      -f /etc/hostapd/hostapd.conf || -L /etc/hostapd/hostapd.conf ]]; then
     UPGRADING=1
     if [[ ! -f "$CONFIG_DIR/logfalcon.toml" ]] || [[ ! -f "$CONFIG_DIR/hostapd.conf" && ! -f /etc/hostapd/hostapd.conf ]]; then
         echo "Incomplete existing configuration. Restore the application/hotspot files before upgrading; no defaults applied." >&2
@@ -100,8 +102,8 @@ if [[ $UPGRADING -eq 1 ]]; then
   mkdir -p /run/logfalcon
   exec 9>/run/logfalcon/transfer.lock
   chown bbsyncer:bbsyncer /run/logfalcon/transfer.lock
-  [[ ! -e /run/logfalcon/shutdown.pending ]] || { echo "Shutdown pending; retry after boot." >&2; exit 1; }
   flock -n 9 || { echo "Copy or shutdown is active; retry bootstrap when idle." >&2; exit 1; }
+  [[ ! -e /run/logfalcon/shutdown.pending ]] || { echo "Shutdown pending; retry after boot." >&2; exit 1; }
 fi
 
 ### --- 1. System packages --- ###
@@ -291,9 +293,6 @@ install -m 644 "$SCRIPT_DIR/system/journald.conf" /etc/systemd/journald.conf.d/l
 # Boot LED heartbeat script
 install -m 755 "$SCRIPT_DIR/system/logfalcon-boot-led.sh" "$INSTALL_DIR/boot-led.sh"
 
-# Ready LED script
-install -m 755 "$SCRIPT_DIR/system/logfalcon-ready-led.sh" "$INSTALL_DIR/ready-led.sh"
-
 if [[ $UPGRADING -eq 0 ]]; then touch "$CONFIG_DIR/identity.pending"; fi
 
 # Offline updater: isolated inbox, root-owned journal, executable and trust store.
@@ -320,8 +319,9 @@ cp "$SCRIPT_DIR/system/logfalcon-config-apply.service" /etc/systemd/system/
 # Allow bbsyncer (web server) to restart hostapd for settings save.
 mkdir -p /etc/polkit-1/rules.d
 install -m 644 "$SCRIPT_DIR/system/50-logfalcon.rules" /etc/polkit-1/rules.d/50-logfalcon-hostapd.rules
+# Earlier signed updaters used a second filename; do not retain its permissions.
+rm -f /etc/polkit-1/rules.d/50-logfalcon.rules
 
-install -m 644 "$SCRIPT_DIR/system/logfalcon-shutdown.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable logfalcon-config-apply.service
 systemctl enable logfalcon-wifi-init.service

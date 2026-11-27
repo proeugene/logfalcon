@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -31,6 +32,36 @@ func TestStatusCrossProcess(t *testing.T) {
 	// The writer has exited; a completed result must still remain visible.
 }
 
+func TestReadStatusRejectsDamagedCompletion(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "status.json")
+	ConfigureStatus(path)
+	t.Cleanup(func() { ConfigureStatus("") })
+	if err := BeginTransfer("fake"); err != nil {
+		t.Fatal(err)
+	}
+	SetStatus("complete", 100, "Saved.")
+	good, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingIdentity, err := json.Marshal(Status{State: "complete", BootID: bootID()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, contents := range [][]byte{
+		append(bytes.Clone(good), []byte("broken")...),
+		append(bytes.Clone(good), bytes.Repeat([]byte(" "), 16384)...),
+		missingIdentity,
+	} {
+		if err := os.WriteFile(path, contents, 0644); err != nil {
+			t.Fatal(err)
+		}
+		if got := ReadStatus(path); got.State != "unavailable" {
+			t.Errorf("damaged completion returned %q", got.State)
+		}
+	}
+}
+
 func TestStatusNeverClaimsInterruptedCopyCompleted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "status.json")
 	for _, tc := range []struct {
@@ -53,5 +84,24 @@ func TestStatusNeverClaimsInterruptedCopyCompleted(t *testing.T) {
 	}
 	if ReadStatus(path).State != "unavailable" {
 		t.Fatal("corrupt status appeared healthy")
+	}
+}
+
+func TestNewTransferClearsSavedCopyAndFailure(t *testing.T) {
+	ConfigureStatus(filepath.Join(t.TempDir(), "status.json"))
+	t.Cleanup(func() { ConfigureStatus("") })
+	if err := BeginTransfer("first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := setSavedCopy(SavedCopy{SessionID: "controller/session", Bytes: 123, EraseAttempted: true}); err != nil {
+		t.Fatal(err)
+	}
+	setFailure("erase_unconfirmed", "Copy saved; erase unconfirmed.")
+	if err := BeginTransfer("next"); err != nil {
+		t.Fatal(err)
+	}
+	status := GetStatus()
+	if status.SavedCopy != nil || status.ReasonCode != "" || status.BytesCopied != 0 || status.State != "identifying" {
+		t.Fatalf("new transfer inherited old result: %+v", status)
 	}
 }

@@ -19,6 +19,7 @@ type IndexParams struct {
 	Pct                                         int
 	SessionsHTML, StorageWarningHTML, CSRFToken string
 	Status                                      lfSync.Status
+	Capture                                     capturePanel
 }
 type SettingsParams struct {
 	Country, CurrentSSID, CurrentPass, MsgHTML, WarningHTML, CSRFToken, Version string
@@ -65,7 +66,7 @@ func boundedPercent(n int) int {
 }
 
 func RenderIndex(p IndexParams) string {
-	view := presentation(p.Status.State)
+	view := presentTransfer(p.Status)
 	hidden := ""
 	if !view.Active && p.Status.State != "complete" {
 		hidden = " hidden"
@@ -85,8 +86,8 @@ func RenderIndex(p IndexParams) string {
 		device = "LogFalcon"
 	}
 	body := pageIntro("", "Recordings", "")
-	body += fmt.Sprintf(`<section id="transfer-hero" class="panel hero" data-tone="%s" aria-labelledby="transfer-title"><div class="hero-main"><div class="hero-copy"><span class="hero-badge"><span class="dot"></span><span id="hero-label">%s</span></span><h2 id="transfer-title" aria-live="polite">%s</h2><p class="hero-description" id="hero-description">%s</p><a id="hero-action" class="btn primary" href="#connection-help">%sConnection help</a><span id="keep-connected" class="badge" hidden>Keep controller connected</span></div><div class="hero-art" aria-hidden="true"><span class="orbit"></span>%s</div></div><div id="copy-progress" class="copy-progress"%s><div class="progress-numbers"><strong class="progress-number" id="progress-number">%d%%</strong><span class="progress-meta" id="progress-meta">Keep the controller connected</span></div><div class="track"><div id="progress-fill" class="fill" role="progressbar" aria-label="Copy progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" style="width:%d%%"></div></div></div><ol class="steps" id="copy-steps" aria-label="Transfer stages">%s</ol></section>`,
-		esc(view.Tone), esc(view.Label), esc(view.Title), esc(view.Body), icon("help"), falconMark, hidden, boundedPercent(p.Status.Progress), boundedPercent(p.Status.Progress), boundedPercent(p.Status.Progress), steps.String())
+	body += fmt.Sprintf(`<section id="transfer-hero" class="panel hero" data-tone="%s" aria-labelledby="transfer-title"><div class="hero-main"><div class="hero-copy"><span class="hero-badge"><span class="dot"></span><span id="hero-label">%s</span></span><h2 id="transfer-title" aria-live="polite">%s</h2><p class="hero-description" id="hero-description">%s</p><a id="hero-action" class="btn primary" href="%s">%s</a>%s<span id="keep-connected" class="badge" hidden>Keep controller connected</span></div><div class="hero-art" aria-hidden="true"><span class="orbit"></span>%s</div></div><div id="copy-progress" class="copy-progress"%s><div class="progress-numbers"><strong class="progress-number" id="progress-number">%d%%</strong><span class="progress-meta" id="progress-meta">Keep the controller connected</span></div><div class="track"><div id="progress-fill" class="fill" role="progressbar" aria-label="Copy progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="%d" style="width:%d%%"></div></div></div><ol class="steps" id="copy-steps" aria-label="Transfer stages">%s</ol></section>`,
+		esc(view.Tone), esc(view.Label), esc(view.Title), esc(view.Body), esc(view.ActionHref), esc(view.ActionLabel), capturePanelHTML(p.Capture), falconMark, hidden, boundedPercent(p.Status.Progress), boundedPercent(p.Status.Progress), boundedPercent(p.Status.Progress), steps.String())
 	body += `<div class="warning-card" id="transfer-warning" role="status"` + func() string {
 		if p.Status.Warning == "" {
 			return " hidden"
@@ -98,7 +99,11 @@ func RenderIndex(p IndexParams) string {
 	body += fmt.Sprintf(`<section class="panel side-panel disk-info"><span class="eyebrow">%s Appliance storage</span><div class="storage-number">%.1f <small>GB free</small></div><div class="disk-bar-track"><div class="disk-bar-fill" style="width:%d%%"></div></div><p class="storage-info">%.1f GB used</p></section>`, icon("storage"), p.FreeGB, boundedPercent(p.Pct), p.UsedGB)
 	body += `<section class="panel side-panel"><span class="eyebrow">` + icon("wifi") + ` Your appliance</span><h3>` + esc(device) + `</h3><a class="text-link" href="/settings">Wi-Fi settings ` + icon("arrow") + `</a></section><details class="panel side-panel help-card" id="connection-help"><summary>Connection &amp; download help</summary><ol><li>Join your appliance’s Wi-Fi and open <a href="http://192.168.4.1">http://192.168.4.1</a>. Stay connected if your phone reports no internet.</li><li>Connect the controller to the USB / OTG data port. The other port powers the Pi.</li><li>Wait for completion, download the .bbl file and open it in Blackbox Explorer.</li><li>During evaluation, keep controller erase and storage cleanup disabled.</li></ol></details><section class="side-panel"><div class="side-links"><a href="/software">Software update ↗</a><details><summary>Transfer details</summary><p id="transfer-status" class="technical" role="status">` + esc(p.Status.Message) + `</p></details></div></section></aside></div>`
 	jsonViews, _ := json.Marshal(statusPresentations)
-	initial, _ := json.Marshal(p.Status)
+	initial, _ := json.Marshal(struct {
+		lfSync.Status
+		Presentation transferPresentation `json:"presentation"`
+		Capture      capturePanel         `json:"capture"`
+	}{p.Status, view, p.Capture})
 	script := "const presentations=" + string(jsonViews) + ";const initialStatus=" + string(initial) + ";const csrfToken=" + strconvQuote(p.CSRFToken) + ";" + dashboardJS
 	return renderShell("Dashboard", "dashboard", p.Version, body, script)
 }
@@ -107,12 +112,28 @@ func strconvQuote(s string) string { b, _ := json.Marshal(s); return string(b) }
 const dashboardJS = `
 const byId=id=>document.getElementById(id);
 const setText=(id,value)=>{const el=byId(id);if(el&&el.textContent!==value)el.textContent=value};
-let completedTransfer=null,polling=false;
-function formatBytes(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB'}
+let completedTransfer=null,polling=false,listRefresh=null;
+async function readDashboard(path,timeout){
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),timeout);
+ try{
+  const response=await fetch(path,{cache:'no-store',signal:controller.signal});
+  if(!response.ok)throw new Error('Dashboard request failed');
+  return await response.text();
+ }finally{clearTimeout(timer)}
+}
+function formatBytes(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B'}
 function applyStatus(s){
- const v=presentations[s.state]||presentations.unavailable;
+ const v=s.presentation||presentations[s.state]||presentations.unavailable;
  byId('transfer-hero').dataset.tone=v.Tone;
  setText('hero-label',v.Label);setText('transfer-title',v.Title);setText('hero-description',v.Body);
+ const capture=s.capture||{};
+ byId('capture-panel').hidden=!capture.Summary;
+ setText('capture-summary',[capture.Summary,capture.Channels].filter(Boolean).join(' '));
+ for(const [id,href] of [['capture-details',capture.DetailsHref],['capture-reference',capture.ReferenceHref]]){
+  const link=byId(id);link.hidden=!href;
+  if(href)link.setAttribute('href',href);else link.removeAttribute('href');
+ }
  setText('transfer-status',s.message||'No additional transfer details.');
  byId('transfer-warning').hidden=!s.warning;setText('transfer-warning',s.warning||'');
  const pct=Math.max(0,Math.min(100,Number(s.progress)||0));
@@ -130,14 +151,16 @@ function applyStatus(s){
  });
  byId('keep-connected').hidden=!v.Active;
  const action=byId('hero-action');action.hidden=v.Active;
- if(s.state==='complete'){action.href='#saved-logs';action.textContent='View recordings'}
- else if(s.state==='error'||s.state==='interrupted'||s.state==='unavailable'){action.href='#connection-help';action.textContent='Connection help'}
- else{action.href='#connection-help';action.textContent='Connection help'}
+ action.href=v.ActionHref||(s.state==='complete'?'#saved-logs':'#connection-help');
+ action.textContent=v.ActionLabel||(s.state==='complete'?'View recordings':'Connection help');
 }
 async function refreshSessions(manual=false){
- const response=await fetch('/sessions/fragment',{cache:'no-store'});
- if(!response.ok)throw new Error('Saved logs unavailable');
- const fresh=document.createElement('div');fresh.innerHTML=await response.text();
+ if(!listRefresh)listRefresh=refreshSessionList().finally(()=>{listRefresh=null});
+ await listRefresh;
+ if(manual){byId('list-result').hidden=false;setText('list-result','Saved logs are up to date.')}
+}
+async function refreshSessionList(){
+ const fresh=document.createElement('div');fresh.innerHTML=await readDashboard('/sessions/fragment',15000);
  const selected=new Set(Array.from(document.querySelectorAll('.recording-select:checked'),el=>el.value));
  let container=byId('session-list');
  if(!container){container=document.createElement('div');container.id='session-list';container.className='session-list';byId('saved-sessions').append(container)}
@@ -156,16 +179,16 @@ async function refreshSessions(manual=false){
  container.querySelectorAll('.recording-select').forEach(el=>el.checked=selected.has(el.value));updateSelection();
  if(container.querySelector('.session-card'))byId('saved-sessions').querySelector('.empty-state')?.remove();
  else if(!byId('saved-sessions').querySelector('.empty-state')){const empty=fresh.querySelector('.empty-state');if(empty)byId('saved-sessions').prepend(empty);}
- if(manual){byId('list-result').hidden=false;setText('list-result','Saved logs are up to date.')}
+ byId('list-result').hidden=true;
 }
 async function updateStatus(){
  if(polling)return;polling=true;
  try{
-  const response=await fetch('/status',{cache:'no-store'});if(!response.ok)throw new Error('Status unavailable');
-  const s=await response.json();applyStatus(s);
-  if(s.state==='complete'&&completedTransfer!==s.transfer_id&&!document.querySelector('[data-delete-busy]')){
-   try{await refreshSessions();completedTransfer=s.transfer_id}
-   catch{byId('list-result').hidden=false;setText('list-result','Copy completed. Could not refresh saved logs; retry Refresh list.')}
+  const s=JSON.parse(await readDashboard('/status',6000));applyStatus(s);
+  if(s.state==='complete'&&completedTransfer!==s.transfer_id&&!listRefresh&&!document.querySelector('[data-delete-busy]')){
+   refreshSessions().then(()=>{completedTransfer=s.transfer_id}).catch(()=>{
+    byId('list-result').hidden=false;setText('list-result','Could not refresh saved logs. Use Refresh list to retry.');
+   });
   }
  }catch{applyStatus({state:'unavailable',message:'Connection lost. Completion is not confirmed; reconnect to the appliance.'})}
  finally{polling=false}
@@ -180,6 +203,7 @@ document.addEventListener('click',async e=>{
  btn.disabled=true;btn.dataset.deleteBusy='true';btn.textContent='Deleting…';
  try{
   const r=await fetch('/sessions/'+btn.dataset.deleteSession,{method:'DELETE',headers:{'X-CSRF-Token':csrfToken}});
+  if(r.status===409)throw new Error('This recording is in use. Wait for the transfer to finish before deleting it.');
   if(!r.ok)throw new Error(r.status===403?'This page expired. Reload before trying again.':'Deletion is unconfirmed. Check your connection.');
   const result=await r.json();if(!result.deleted)throw new Error('Deletion is unconfirmed.');
   location.reload();
@@ -221,7 +245,18 @@ func controllerLabel(dir string) string {
 }
 func sessionDate(s *storage.Session) string {
 	stamp := s.SessionDir
-	// Names have a 17-character UTC timestamp followed by a collision suffix.
+	// Older directory names used the Pi's local clock with no timezone or suffix.
+	if len(stamp) == 17 {
+		if s.Manifest != nil {
+			if t, err := time.Parse(time.RFC3339, s.Manifest.CreatedUTC); err == nil && t.Year() > 0 {
+				return t.UTC().Format("2 Jan 2006 · 15:04") + " UTC"
+			}
+		}
+		if t, err := time.Parse("2006-01-02_150405", stamp); err == nil {
+			return t.Format("2 Jan 2006 · 15:04") + " (Pi clock)"
+		}
+	}
+	// Current names have a UTC timestamp followed by a collision suffix.
 	if len(s.SessionDir) >= 17 {
 		stamp = s.SessionDir[:17]
 	}
@@ -265,8 +300,8 @@ func RenderSessions(sessions []*storage.Session) string {
 		if s.BBLPath != nil {
 			download = fmt.Sprintf(`<a class="btn session-download" href="/download/%s/raw_flash.bbl" aria-label="Download .bbl from %s">%s</a>`, esc(s.SessionID), esc(sessionDate(s)), icon("download"))
 		}
-		fmt.Fprintf(&b, `<article class="session-card" data-session="%s" data-revision="%s"><div class="session-main">%s<div><span class="session-title">%s</span><div class="session-controller">%s</div></div>%s</div><div class="session-foot"><span class="badge %s" title="%s">%s</span><span class="session-size">%.1f MB · .BBL</span></div>%s<details class="session-details"><summary>Transfer evidence and actions</summary><div class="session-meta"><span>MSP API %s</span><span>SHA-256: %s</span><span>SHA-256 is saved-copy evidence; no independent controller checksum is recorded.</span></div><div class="session-actions"><a class="btn" href="/download/%s/manifest.json">Download manifest</a><button class="btn-delete secondary" data-delete-session="%s" type="button">Delete from Pi</button></div></details></article>`,
-			esc(s.SessionID), recordingRevision(s), recordingCheckbox(s), esc(recordingTitle(s)), esc(recordingController(s)), download, cls, esc(tip), esc(label), float64(size)/1048576, recordingContext(s), esc(api), esc(sha), esc(s.SessionID), esc(s.SessionID))
+		fmt.Fprintf(&b, `<article class="session-card" data-session="%s" data-revision="%s"><div class="session-main">%s<div><span class="session-title">%s</span><div class="session-controller">%s</div></div>%s</div><div class="session-foot"><span class="badge %s" title="%s">%s</span><span class="session-size">%s · .BBL</span></div>%s<details class="session-details"><summary>Transfer evidence and actions</summary><div class="session-meta">%s<span>MSP API %s</span><span>SHA-256: %s</span><span>SHA-256 is saved-copy evidence; no independent controller checksum is recorded.</span></div><div class="session-actions"><a class="btn" href="/download/%s/manifest.json">Download manifest</a><button class="btn-delete secondary" data-delete-session="%s" type="button">Delete from Pi</button></div></details></article>`,
+			esc(s.SessionID), recordingRevision(s), recordingCheckbox(s), esc(recordingTitle(s)), esc(recordingController(s)), download, cls, esc(tip), esc(label), recordingSize(size), recordingContext(s), recordingTimes(s), esc(api), esc(sha), esc(s.SessionID), esc(s.SessionID))
 	}
 	b.WriteString("</div>")
 	return b.String()

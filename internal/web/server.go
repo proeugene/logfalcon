@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/rand"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -38,6 +39,12 @@ var allowedDownloads = map[string]bool{
 	"raw_flash.bbl": true,
 	"manifest.json": true,
 }
+
+// The Pi serves these assets offline. GitHub Pages uses the same artwork.
+//
+//go:generate cp assets/logfalcon-mark.svg assets/favicon.svg ../../docs/assets/
+//go:embed assets/*.svg
+var brandFiles embed.FS
 
 // captivePortalPaths maps each OS network probe path to the exact response it
 // expects when the network has working internet access. Returning these "success"
@@ -117,6 +124,12 @@ func NewServer(storagePath string, cfg *config.Config) *Server {
 	}
 
 	s.configureUpdates()
+	for _, name := range []string{"assets/logfalcon-mark.svg", "favicon.svg"} {
+		s.mux.HandleFunc("GET /"+name, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "public, max-age=3600")
+			http.ServeFileFS(w, r, brandFiles, "assets/"+filepath.Base(name))
+		})
+	}
 	s.mux.HandleFunc("GET /", s.handleIndex)
 	s.mux.HandleFunc("GET /sessions", s.handleSessions)
 	s.mux.HandleFunc("GET /status", s.handleStatus)

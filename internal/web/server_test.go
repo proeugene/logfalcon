@@ -111,6 +111,17 @@ func TestStatusEndpoint(t *testing.T) {
 	}
 }
 
+func TestOfflineBrandAssets(t *testing.T) {
+	s, _ := newTestServer(t)
+	for _, path := range []string{"/assets/logfalcon-mark.svg", "/favicon.svg"} {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "image/svg+xml" || !strings.Contains(w.Body.String(), "<svg ") {
+			t.Errorf("%s did not return SVG artwork: status %d, type %q", path, w.Code, w.Header().Get("Content-Type"))
+		}
+	}
+}
+
 func TestCaptivePortal(t *testing.T) {
 	s, _ := newTestServer(t)
 

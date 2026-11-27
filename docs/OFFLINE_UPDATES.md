@@ -7,9 +7,10 @@ access, or enable iNav. iNav — Experimental; copying currently disabled.
 
 ## Pilot journey
 
-Download the architecture-specific .lfu file while online. Join the appliance's
-unique LogFalcon Wi-Fi, open http://192.168.4.1, then Software update (also linked
-from Settings). Upload, review the authenticated target version and install.
+Download the architecture-specific `.lfu` file while online. Join the Pi’s Wi-Fi,
+open `http://192.168.4.1` and select **Updates**. Choose your file and select
+**Upload and review**. On **Review update**, check the target version before
+choosing **Install update**.
 Keep power connected, reconnect if necessary and wait for the installed version
 and confirmed application update. The status then asks for a controlled reboot
 to activate boot-only integration changes. After reboot, the worker clears that

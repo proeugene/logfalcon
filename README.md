@@ -1,8 +1,8 @@
-# LogFalcon
+# <img src="docs/assets/favicon.svg" width="32" height="32" alt=""> LogFalcon
 
-**Collect Betaflight blackbox logs between flights, without a laptop.**
+**Collect blackbox logs from FPV drones running Betaflight, without a laptop.**
 
-Plug your flight controller into a Raspberry Pi over USB. LogFalcon copies the recording from the controller’s internal flash to the Pi’s microSD card. Join the Pi’s Wi-Fi on your phone to download the `.bbl`. The original stays on the quad by default.
+Between flights, plug your flight controller into a Raspberry Pi over USB. LogFalcon copies the recording from the controller’s internal flash to the Pi’s microSD card. Join the Pi’s Wi-Fi on your phone to download the `.bbl`. The original stays on the quad by default.
 
 [Set up a Pi](#try-it-on-a-pi) · [Inside LogFalcon](#inside-logfalcon) · [Pilot guide](https://proeugene.github.io/logfalcon/guide.html)
 
@@ -21,7 +21,7 @@ Plug your flight controller into a Raspberry Pi over USB. LogFalcon copies the r
 You’ll need a Pi Zero W or Zero 2 W, a 16 GB or larger microSD card, a 5 V supply, a USB OTG adapter, a data cable and a Betaflight controller that records to **internal SPI flash**. iNav copying is disabled. Controller-side SD cards and ArduPilot are unsupported. Physical testing of this revision is still open on both Pi models. [Compatibility](docs/FC_COMPATIBILITY_ANALYSIS.md) · [Test record](DEVELOPMENT_TESTING.md)
 
 1. Build the SD image from this checkout, verify its checksum and flash a spare card. As of 27 November 2026, there’s no published SD image for this revision. [Image build instructions](DEVELOPMENT_TESTING.md#exact-image-baseline-and-comparison)
-2. Power the Pi through **PWR IN**, join its Wi-Fi and open `http://log.falcon` or `http://192.168.4.1`. Before the first copy, confirm that `erase_after_sync` and `storage_pressure_cleanup` are both `false`. Upgrades preserve your settings. [Pilot setup guide](https://proeugene.github.io/logfalcon/guide.html#setup)
+2. Power the Pi through **PWR IN**, join its Wi-Fi and open `http://log.falcon` or `http://192.168.4.1`. If **Set up Wi-Fi** opens, configure the hotspot or choose **Skip for now** to open **Recordings**. Before the first copy, confirm that `erase_after_sync` and `storage_pressure_cleanup` are both `false`. Upgrades preserve your settings. [Pilot setup guide](https://proeugene.github.io/logfalcon/guide.html#setup)
 3. Stop recording and plug the controller into the Pi’s **USB / OTG data port**. Leave it connected while the copy runs. When the dashboard shows **Copy completed.**, choose **Download saved .bbl**.
 
 ## Inside LogFalcon

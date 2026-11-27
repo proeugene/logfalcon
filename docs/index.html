@@ -3,40 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Copy Betaflight blackbox recordings to a Raspberry Pi over USB and download the saved files to your phone over the Pi’s Wi-Fi.">
+  <meta name="description" content="Collect blackbox logs from FPV drones running Betaflight. Copy them to a Raspberry Pi over USB and download them to your phone between flights.">
   <title>LogFalcon — Drone blackbox collection</title>
+  <meta name="theme-color" content="#14221d">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="radar-bg" aria-hidden="true"></div>
   <nav aria-label="Main navigation">
-    <a class="brand" href="index.html"><span class="brand-accent">LOG</span>FALCON</a>
+    <a class="brand" href="index.html" aria-current="page"><img src="assets/logfalcon-mark.svg" width="28" height="28" alt="">LogFalcon</a>
     <div class="nav-right">
       <a class="nav-link" href="guide.html">Guide</a>
+      <a class="nav-link" href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md">Architecture</a>
       <a class="nav-link" href="https://github.com/proeugene/logfalcon">GitHub ↗</a>
     </div>
   </nav>
   <main>
     <section class="hero">
-      <div class="hud-frame">
-        <div class="corner-tr" aria-hidden="true"></div>
-        <div class="corner-bl" aria-hidden="true"></div>
+      <div class="hero-inner">
         <div class="hero-copy">
-          <p class="eyebrow">Betaflight · Raspberry Pi</p>
+          <p class="eyebrow">For FPV drones running Betaflight</p>
           <h1>Flight logs,<br>without a laptop.</h1>
-          <p class="hero-sub">Plug your flight controller into the Pi between flights. It copies the blackbox recording over USB, ready to download to your phone over the Pi’s own Wi-Fi. The original stays on the controller by default.</p>
+          <p class="hero-sub">Plug your flight controller into a Raspberry Pi between flights. It copies the blackbox recording over USB, ready to download to your phone over the Pi’s own Wi-Fi.</p>
           <div class="ctas">
-            <a href="guide.html#setup" class="btn-primary">Set up a Pi</a>
+            <a href="guide.html#setup" class="btn-primary">Set up a Pi <span aria-hidden="true">↗</span></a>
             <a href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md#copy-and-recovery-ordering" class="text-link">How the copy is checked</a>
           </div>
         </div>
-        <figure class="dashboard-preview">
-          <a href="images/dashboard-preview.png" aria-label="View the sample dashboard at full size">
-            <img src="images/dashboard-preview.png" width="1040" height="506" alt="Completed copy showing 4 MB saved, data retained on the controller and a Download saved .bbl button">
-          </a>
-          <figcaption>The dashboard after a simulated 4 MB transfer.</figcaption>
-        </figure>
+        <div class="board-plate"><img src="images/pi-zero.svg" width="224" height="130" alt="Illustration of a Pi Zero board with its two micro-USB ports"></div>
       </div>
+      <ul class="hero-facts" aria-label="Collection features"><li>USB collection</li><li>Local Wi-Fi</li><li>Original retained by default</li></ul>
     </section>
     <section id="procedure" class="section">
       <h2 class="section-label">From the controller to your phone</h2>
@@ -46,6 +42,12 @@
         <div class="step"><span class="step-num">03</span><h3 class="step-title">Make a field note</h3><p class="step-body">Give the controller a nickname and jot down what you noticed on that flight while it’s still fresh.</p></div>
         <div class="step"><span class="step-num">04</span><h3 class="step-title">Take the logs home</h3><p class="step-body">Download a .bbl to open in the Betaflight App’s Blackbox Viewer, or export several recordings and their notes in one ZIP.</p></div>
       </div>
+      <figure class="dashboard-preview">
+        <a href="images/dashboard-preview.png" aria-label="View the sample dashboard at full size">
+          <img src="images/dashboard-preview.png" width="1040" height="490" loading="lazy" alt="Completed copy showing 4 MB saved, data retained on the controller and a Download saved .bbl button">
+        </a>
+        <figcaption>The dashboard after a simulated 4 MB transfer.</figcaption>
+      </figure>
     </section>
     <section class="section" id="compatibility">
       <h2 class="section-label">Compatibility</h2>
@@ -65,7 +67,7 @@
     </section>
   </main>
   <footer>
-    <span>LOGFALCON</span><span class="footer-sep">·</span>
+    <span>LogFalcon</span><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md">Engineering</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon">GitHub</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon/issues">Feedback</a><span class="footer-sep">·</span>

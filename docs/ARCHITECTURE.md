@@ -156,6 +156,18 @@ See [AI-assisted development](AI_ASSISTED_DEVELOPMENT.md),
 [compatibility evidence](FC_COMPATIBILITY_ANALYSIS.md) and
 [release gates](../RELEASE_CHECKLIST.md).
 
+## Dashboard and website visuals
+
+The [Go page shell](../internal/web/design.go) embeds the [Field Kit stylesheet](../internal/web/field-kit.css)
+in each dashboard page. The Pi serves the [Peregrine logo and favicon](../internal/web/assets)
+from the binary, so both work offline. The public homepage and pilot guide share
+[the site stylesheet](styles.css), with [guide-specific rules](guide.css) for longer instructions.
+
+Edit the SVGs in `internal/web/assets/`, then run `go generate ./internal/web`
+from the repository root to refresh the copies in `docs/assets/`. The README,
+homepage and pilot guide all display [the same dashboard screenshot](images/dashboard-preview.png),
+captured from a local server using a simulated transfer.
+
 ## Device setup and signed offline update
 
 A fresh-install-only identity.pending marker makes the boot configuration

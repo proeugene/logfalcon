@@ -1,0 +1,16 @@
+<svg color="#d6e3c3" viewBox="0 0 224 130" role="img" aria-label="Illustration of a Pi Zero family board with its two micro USB ports" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(12 16) rotate(-4 99 48)" stroke-linejoin="round">
+    <rect x="2" y="6" width="194" height="88" rx="10" fill="currentColor" opacity=".42"/>
+    <rect fill="#426b4c" stroke="currentColor" x="1" y="2" width="194" height="88" rx="10" stroke-width="1.8"/>
+    <g fill="none" stroke="currentColor" stroke-width=".9" opacity=".56"><path d="M23 51h20l7-7m-32 12h24l11-9M67 73v-8l12-12m-5 22v-8l10-10m5-18v-9l7-7h20m-25 19v-8l8-8h21m18 38h10l10 9h19M41 64h14v9h7M118 51h7l11-11h17m-36 15h11l10-11h18"/><path d="M23 28h20v7h12m58 25 10 9h13m-21-13 11 10h11"/></g>
+    <g fill="#d4d8b6" stroke="currentColor" stroke-width="1.2"><circle cx="13" cy="14" r="6"/><circle cx="183" cy="14" r="6"/><circle cx="13" cy="78" r="6"/><circle cx="183" cy="78" r="6"/></g>
+    <g fill="#14221d"><circle cx="13" cy="14" r="2.9"/><circle cx="183" cy="14" r="2.9"/><circle cx="13" cy="78" r="2.9"/><circle cx="183" cy="78" r="2.9"/></g>
+    <rect x="29" y="9" width="137" height="14" rx="1.7" fill="none" stroke="currentColor" opacity=".7"/>
+    <g stroke="#d4d8b6" stroke-width="3.2" stroke-dasharray="2.5 4.3"><path d="M31 13h132M31 19h132"/></g>
+    <rect x="67" y="34" width="34" height="26" rx="1.5" fill="#14221d" stroke="currentColor"/><rect x="71" y="37" width="26" height="19" fill="none" stroke="currentColor" opacity=".45"/>
+    <rect x="109" y="33" width="13" height="12" rx="1" fill="#14221d" stroke="currentColor"/>
+    <g fill="#d4d8b6" stroke="currentColor" stroke-width=".7"><path d="M2 36h21v26H2zM145 32h15v17h-15z"/><path d="M140 56h3v4h-3zm6 0h3v4h-3zm7 0h3v4h-3zM38 39h4v3h-4zm7 0h4v3h-4zm10 16h5v3h-5z"/></g>
+    <g fill="#d4d8b6" stroke="currentColor" stroke-width="1.2"><path d="M37 76h29v15H37zM111 78h22v13h-22zM150 78h22v13h-22z"/></g>
+    <g fill="#14221d"><path d="M40 85h23v4H40zM113 86h18v3h-18zM152 86h18v3h-18z"/></g>
+  </g>
+</svg>

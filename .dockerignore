@@ -4,4 +4,6 @@
 !go.sum
 !cmd/logfalcon/*.go
 !internal/**/*.go
+!internal/web/field-kit.css
+!internal/web/assets/*.svg
 **/*_test.go

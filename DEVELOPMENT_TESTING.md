@@ -838,3 +838,15 @@ collect a retained recording, unplug, check that Wi-Fi stays available and
 open the downloaded file in Blackbox Viewer. Record the outcome on each Pi
 model for which compatibility will be claimed and obtain one independent
 pilot's result.
+
+### Field Kit browser checks, 27 November 2026
+
+The design in `b1b0b07` was checked in headless Chromium at 320, 390 and 1040 CSS
+pixels wide. The homepage, pilot guide and four dashboard pages (Recordings,
+recording details, Updates and Settings) rendered at all three widths. Each
+surface loaded the Peregrine logo and favicon.
+
+On the local Go server, the Recordings page updated through waiting, copying,
+interrupted, failed and completed states. The downloaded 4 MiB sample matched
+the fixture’s SHA-256. The [dashboard screenshot](docs/images/dashboard-preview.png)
+shows that simulated transfer. Physical Pi and flight-controller acceptance remains open.

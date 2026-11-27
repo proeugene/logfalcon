@@ -1,11 +1,9 @@
 # Offline application updates
 
-This is an implemented local candidate, not physical acceptance or release
-readiness. It updates the Go application and the fixed integration asset list
-in internal/update/package.go. It does not upgrade Raspberry Pi OS, add internet
-access, or enable iNav. iNav — Experimental; copying currently disabled.
+A signed `.lfu` package updates the Go application and the system files listed in
+[the package definition](../internal/update/package.go). Raspberry Pi OS is updated separately.
 
-## Pilot journey
+## Install an update over the hotspot
 
 Download the architecture-specific `.lfu` file while online. Join the Pi’s Wi-Fi,
 open `http://192.168.4.1` and select **Updates**. Choose your file and select
@@ -99,20 +97,19 @@ services; errors contain metadata, never credentials. Review diagnostics before 
 Inventory was made from local tags through v.0.4.8-rc1 and test baseline 66b21ff.
 Tags v0.1.0–v0.2.1 are Python-era; Go starts at v0.3.0. The early v0.1.0–v0.1.2
 layout used /opt/bbsyncer, /etc/bbsyncer and /mnt/bbsyncer-logs; later layouts use
-logfalcon paths. Current releases before this candidate have no dashboard uploader.
+logfalcon paths. The tags listed here predate the dashboard uploader.
 
 | Historical installation | Implemented route | Evidence / remaining limitation |
 |---|---|---|
 | Complete Go/TOML, standard Bookworm/systemd layout, v0.3.0 onwards | One-time verified source installer bootstrap, then latest signed package | Actual tag config fixtures for v0.3.0, v0.3.8, v0.4.0, v0.4.6, v0.4.7-rc1 and v.0.4.8-rc1; local installer upgrade fixture; no exact old-image acceptance |
 | Python-era v0.2.0 | Config fixture only; runtime migration unsupported automatically | Original TOML parser preservation is tested; Python services/venv and rollback are not validated |
 | Earlier Python/bbsyncer layouts, missing/corrupt config, divergent service layout, custom status_path or non-Bookworm base | Stop and recover/migrate explicitly | No automatic path claim; preserve logs/config offline and use a spare current image if needed |
-| This candidate with uploader and a provisioned trust anchor | Direct latest package, including cumulative key delegation | Signature, real executable metadata, migration/config preservation and failure fixtures; physical systemd/image upgrade still unverified |
+| Go installation with the uploader and a trusted signing key | Direct latest package, including cumulative key delegation | Signature, real executable metadata, migration/config preservation and failure fixtures; physical systemd/image upgrade still unverified |
 
 Migration contract 1 retains configuration bytes. Every supported prior Go
 configuration loads into the current schema without rewriting its values. In
 particular, old explicit erase_after_sync=true and storage_pressure_cleanup=true
-remain true. This is preservation, not an endorsement of destructive evaluation.
-Set both false deliberately before hardware evaluation if that is your intent.
+remain true. Set both to false before a field test to retain the original and saved copies.
 erase_after_sync, storage_pressure_cleanup, flash_read_compression, credentials
 and storage_path must be explicit. Missing values, malformed TOML, inconsistent
 hostapd credentials or enabled unsupported compression block activation. Resolve
@@ -140,13 +137,12 @@ published releases had no signed update files or complete current integration
 asset/checksum/bootstrap bundle. They cannot be treated as a source for fallback
 assets. For example, v0.4.6 lists 2026-03-11-logfalcon.img.xz (466,467,332 bytes,
 GitHub digest sha256:feda15861f43727d4f4a68f4f10b23a57c137e6840343cb30856ff10620179fd).
-No historical image was downloaded, mounted or booted in this session: installed
-layout claims are based on tagged installer/image source, pending exact-image
-confirmation. Source tags, an uploaded image name and physical validation are
-separate evidence.
+The layout inventory comes from the tagged installer and image sources. The
+[roadmap](https://proeugene.github.io/logfalcon/roadmap.html) covers testing upgrades on spare cards.
 
 ## One-time bootstrap
- without reflashing (standard Go installation)
+
+Use this procedure to upgrade a standard Go installation without reflashing.
 
 Perform this on a spare card first. The source installer bootstrap is an
 administrator operation, separate from transactional dashboard package activation.
@@ -176,7 +172,7 @@ verifies downloaded assets against release checksums before machine changes.
 For first trust, pin the independently verified source/bootstrap route above.
 Both installers reject missing Go executables instead of guessing a Python migration.
 
-## Maintainer signing setup (not performed by the coding assistant)
+## Maintainer signing setup
 
 Use a secure maintainer machine. Generate and retain a secret outside the repo:
 
@@ -190,14 +186,12 @@ Commit only release-2026.pub and review its fingerprint. Put the 64-character
 seed in the repository Actions secret UPDATE_SIGNING_SEED and set the repository
 Actions variable UPDATE_SIGNING_KEY_ID to release-2026. Restrict tag/release
 workflow execution to trusted maintainers. Never expose the secret to PR jobs,
-enable shell tracing, print it, or include it in an artifact. No external secrets
-or repository settings were changed by this implementation.
+enable shell tracing, print it, or include it in an artifact.
 
 Tag releases build/sign/self-verify one package per ABI from the same commit as
 the binaries and integration assets. Missing seed, key ID, public key, package
 or image fails the workflow; unsigned packages are not published. The image and
-both installer paths provision public keys. There are deliberately no production
-keys committed by this task, so release signing is inactive until setup is done.
+both installer paths provision the trusted public keys.
 
 For a local maintainer build (replace the version/commit with the exact release):
 

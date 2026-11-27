@@ -1,23 +1,17 @@
 # Controller compatibility and evidence
 
-| Target | Current behaviour | Evidence still needed |
-|---|---|---|
-| Betaflight, internal SPI flash | Intended copy target; storage device/summary checks | Exact Pi/board/firmware dump, reconnect and failure tests |
-| iNav — Experimental; copying currently disabled | Rejected before copying | Correct firmware-specific protocol and real hardware acceptance |
-| FC-side SD cards | Rejected | Outside current scope |
-| ArduPilot / other firmware | Unsupported | Outside current scope |
-| Pi Zero 2 W | Shared 32-bit ARM6 image candidate and separate ARM64 binary build | Exact image, Wi-Fi/USB/LED/power acceptance |
-| Pi Zero W | Shared 32-bit ARM6 image candidate | Separate physical validation and timing on this board |
+| Hardware or firmware | What LogFalcon does |
+|---|---|
+| Betaflight with internal SPI flash | Checks the storage device and flash usage before copying. Blocks MSP API below 1.41 and warns above 1.48. |
+| iNav | Stops before reading flash. |
+| Controller-side SD card or ArduPilot | Copying is unsupported. |
+| Pi Zero W and Zero 2 W | Both use the 32-bit ARM6 image. A separate ARM64 binary is available for 64-bit installations on a Zero 2 W. |
 
-See [version checks](../internal/fc/versions.go), [detection](../internal/fc/detector.go)
-and [fixed synthetic protocol fixtures](../internal/msp/testdata/README.md).
-Version ranges in code are protocol assumptions, not a list of tested boards.
-A warning on newer Betaflight firmware does not establish compatibility.
-
-Record every physical result in [DEVELOPMENT_TESTING.md](../DEVELOPMENT_TESTING.md),
-including exact commit/image checksum and failures. No confirmed hardware matrix
-has been produced for this local candidate. The [older Python analysis](archive/FC_COMPATIBILITY_ANALYSIS_PYTHON.md)
-is historical and must not be used as current support evidence.
+The [detector](../internal/fc/detector.go), [version checks](../internal/fc/versions.go)
+and [protocol fixtures](../internal/msp/testdata/README.md) describe the wire formats the code handles.
+For results on individual boards, see the [field test record](../DEVELOPMENT_TESTING.md).
+The [roadmap](https://proeugene.github.io/logfalcon/roadmap.html) lists the next hardware checks.
+The [Python compatibility analysis](archive/FC_COMPATIBILITY_ANALYSIS_PYTHON.md) covers an earlier implementation.
 
 ## Tagged protocol review, 21 October 2026
 

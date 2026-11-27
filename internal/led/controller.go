@@ -73,8 +73,7 @@ type Controller struct {
 }
 
 // New creates a Controller with the specified backend.
-// Supported backend names: "sysfs", "gpio".
-// gpioPin is used only for the gpio backend.
+// Configuration accepts "sysfs" for the built-in LED or "none" to disable it.
 func New(backend string, gpioPin int) *Controller {
 	c := &Controller{
 		state:   Off,
@@ -334,7 +333,7 @@ func (b *sysfsBackend) RestoreTrigger() {
 	b.write("trigger", "mmc0")
 }
 
-// --- gpio backend (placeholder) ---
+// gpioBackend logs requests without driving a pin. Configuration rejects "gpio".
 
 type gpioBackend struct {
 	pin int

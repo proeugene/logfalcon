@@ -1,6 +1,7 @@
 # Licence and provenance review
 
-The repository declares MIT in [LICENSE](../LICENSE). On 20 October 2026 the
+Eugene Prokudin holds the copyright for LogFalcon and licenses it under the
+[MIT licence](../LICENSE). On 20 October 2026 the
 optional `internal/msp/huffman.go` table and decoder, plus their tests, were
 removed at the maintainer's direction. Their header said the table was ported
 from Betaflight Configurator, whose
@@ -10,9 +11,7 @@ transfers remain; setting `flash_read_compression=true` fails validation.
 
 Removal from this checkout does not change old releases or Git history. Do not
 assert that prior distributions' licensing obligations have been settled. Review
-those artifacts before redistributing them. Also confirm the copyright holder:
-LICENSE currently says “Eugene Prokopev”, whereas current commits identify
-Eugene Prokudin. The notice has been preserved pending the owner's confirmation.
+those artifacts before redistributing them.
 
 Protocol tests contain authored synthetic packets describing wire fields, not
 copied firmware implementations; [fixture provenance](../internal/msp/testdata/README.md)

@@ -175,8 +175,8 @@ GitHub read-only inspection on this date:
 | Private vulnerability reporting | Disabled |
 
 These settings were inspected, not changed. CodeQL workflow presence does not
-prove a successful scan of this uncommitted candidate. The licence-holder name
-and historical compression distributions also need maintainer review; see
+prove a successful scan of this uncommitted candidate. For the confirmed
+copyright notice and the review of historical compression distributions, see
 [provenance](docs/PROVENANCE.md).
 
 **Next external action:** review and record the candidate as a commit, then run

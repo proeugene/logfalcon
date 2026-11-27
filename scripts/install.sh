@@ -79,7 +79,7 @@ for asset in logfalcon-update.service logfalcon-update.path logfalcon@.service l
     logfalcon-diagnostics-export.timer config-apply.sh wifi-init.sh logfalcon-boot-led.sh \
     99-betaflight-fc.rules journald.conf 50-logfalcon.rules logfalcon-shutdown.service \
     logfalcon-default.toml logfalcon-boot-config.txt logfalcon-build.txt update-keys.txt checksums.txt; do
-    fetch_asset "$asset" || die "Release $VERSION lacks required integration assets; no system changes made. Choose a complete candidate release."
+    fetch_asset "$asset" || die "Release $VERSION lacks required integration assets; no system changes made. Choose a release that includes the required assets."
 done
 
 while IFS= read -r key; do

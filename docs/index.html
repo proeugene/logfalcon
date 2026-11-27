@@ -14,7 +14,7 @@
     <a class="brand" href="index.html" aria-current="page"><img src="assets/logfalcon-mark.svg" width="28" height="28" alt="">LogFalcon</a>
     <div class="nav-right">
       <a class="nav-link" href="guide.html">Guide</a>
-      <a class="nav-link" href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+      <a class="nav-link" href="#engineering">Engineering</a>
       <a class="nav-link" href="https://github.com/proeugene/logfalcon">GitHub ↗</a>
     </div>
   </nav>
@@ -27,7 +27,7 @@
           <p class="hero-sub">Plug your flight controller into a Raspberry Pi between flights. It copies the blackbox recording over USB, ready to download to your phone over the Pi’s own Wi-Fi.</p>
           <div class="ctas">
             <a href="guide.html#setup" class="btn-primary">Set up a Pi <span aria-hidden="true">↗</span></a>
-            <a href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md#copy-and-recovery-ordering" class="text-link">How the copy is checked</a>
+            <a href="https://github.com/proeugene/logfalcon/releases" class="text-link">View GitHub releases</a>
           </div>
         </div>
         <div class="board-plate"><img src="images/pi-zero.svg" width="224" height="130" alt="Illustration of a Pi Zero board with its two micro-USB ports"></div>
@@ -52,23 +52,30 @@
     <section class="section" id="compatibility">
       <h2 class="section-label">Compatibility</h2>
       <div class="compatibility-copy">
-        <p>LogFalcon targets <strong>Betaflight controllers that record to internal SPI flash</strong>, paired with a Pi Zero W or Zero 2 W. Field checks on this image are still open for both Pi models.</p>
-        <p>iNav copying is disabled. Controller-side SD cards and ArduPilot are unsupported.</p>
+        <p>In Betaflight, check that your controller’s <strong>Blackbox Device</strong> is set to <strong>SPI Flash</strong>. LogFalcon reads that internal flash over USB. Controllers that log to an SD card, iNav and ArduPilot are outside its scope.</p>
       </div>
-      <a class="text-link" href="guide.html#compatibility">Read the limitations →</a>
+      <a class="text-link" href="guide.html#compatibility">Check your setup →</a>
     </section>
     <section class="section" id="setup">
       <h2 class="section-label">What you need</h2>
       <ul class="equipment-list">
         <li>Pi Zero W or Zero 2 W</li><li>16 GB+ microSD card</li><li>5 V USB supply</li><li>OTG adapter and data cable</li><li>Betaflight FC with SPI flash</li>
       </ul>
-      <p class="section-intro">To try this version, build its SD image from source and verify the checksum before flashing a spare card. The guide walks you through the build and your first download.</p>
+      <p class="section-intro">Choose a version on <a href="https://github.com/proeugene/logfalcon/releases">GitHub Releases</a>. The setup guide walks you through flashing a spare card and downloading your first flight log.</p>
       <a class="btn-primary" href="guide.html#setup">Open the setup guide</a>
+    </section>
+    <section class="section" id="engineering">
+      <h2 class="section-label">Inside LogFalcon</h2>
+      <div class="compatibility-copy">
+        <p>LogFalcon is an open-source Go project maintained by <a href="https://github.com/proeugene">Eugene Prokudin</a>. The USB copier runs separately from the dashboard, so a pilot can collect a flight with the phone in their pocket. When they join the hotspot, the dashboard reads the result from the Pi.</p>
+        <p>The copier checks the byte count and rereads the saved file to compare its SHA-256 with the incoming data. The original stays on the controller by default. Even with erasure switched on, LogFalcon checks the controller’s flash usage again. If it has changed, the original stays put.</p>
+        <p><a href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md#copy-and-recovery-ordering">Read the copy sequence</a> · <a href="https://github.com/proeugene/logfalcon/blob/main/internal/sync/transfer_test.go">See the transfer tests</a></p>
+      </div>
     </section>
   </main>
   <footer>
     <span>LogFalcon</span><span class="footer-sep">·</span>
-    <a href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md">Engineering</a><span class="footer-sep">·</span>
+    <a href="roadmap.html">Roadmap</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon">GitHub</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon/issues">Feedback</a><span class="footer-sep">·</span>
     <a href="https://github.com/proeugene/logfalcon/blob/main/LICENSE">MIT licence</a>

@@ -19,7 +19,7 @@ func (s *Server) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	state := update.ReadState(s.updateStateDir)
 	if _, err := os.Stat(filepath.Join(s.updateInbox, "request")); err == nil && state.Message != "Update state unreadable; inspect diagnostics." {
-		state = update.State{Phase: "queued", Message: "Waiting for exclusive installation lock. Installation is not yet confirmed."}
+		state = update.State{Phase: "queued", Message: "Update queued. Keep the Pi powered and check back for the installation result."}
 	}
 	s.sendJSON(w, r, 200, state)
 }

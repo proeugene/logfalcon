@@ -1,76 +1,54 @@
 # LogFalcon
 
-[![CI](https://github.com/proeugene/logfalcon/actions/workflows/go-ci.yml/badge.svg)](https://github.com/proeugene/logfalcon/actions/workflows/go-ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**A Raspberry Pi flight-log collector for Betaflight pilots.**
 
-**Automatic drone blackbox collection with a Raspberry Pi.**
+I’m Eugene Prokudin. I built LogFalcon so I could collect blackbox recordings between flights without taking a laptop to the field. Plug the flight controller into the Pi over USB, then download the logs to a phone over the Pi’s own Wi-Fi. I chose to keep the original recording on the controller by default.
 
-LogFalcon is an open-source Go appliance for copying flight-controller blackbox logs to a Raspberry Pi over USB. It organises saved dumps by controller and session, with downloads available through a local Wi-Fi hotspot. The intended field workflow is simple: power the Pi once, connect a controller between flights, and collect logs without opening a laptop.
+[How it protects a recording](#when-a-recording-grows-during-a-copy) · [Architecture](docs/ARCHITECTURE.md) · [Pilot guide](https://proeugene.github.io/logfalcon/guide.html) · [My GitHub profile](https://github.com/proeugene)
 
-[Website](https://proeugene.github.io/logfalcon/) · [Pilot and developer guide](https://proeugene.github.io/logfalcon/guide.html) · [Release assets](https://github.com/proeugene/logfalcon/releases)
+![LogFalcon dashboard showing 4 MB saved, the original retained on the controller and a button to download the recording](docs/images/dashboard-preview.png)
+
+*The dashboard running locally with a simulated transfer and sample recording.*
+
+## When a recording grows during a copy
+
+Is it safe to erase a controller after a verified copy? The Pi can save every byte the controller reported and still miss a recording that started during the transfer.
+
+If a pilot enables erasure, LogFalcon checks the byte count and compares the SHA-256 of the incoming bytes with a reread of the saved file. Once the recording and its manifest are safely on disk, it asks the controller how much flash is in use. If the size changed or the controller can’t confirm it is ready, LogFalcon keeps the copy and skips erasure. Stop recording before collection, since the controller can still write after that last check. [Copy and recovery design](docs/ARCHITECTURE.md#copy-and-recovery-ordering)
+
+You can run the regression without a Pi. The simulated controller appends data during the first read. The test passes only if the original snapshot is still readable, the manifest records no erase attempt and the controller receives **zero erase commands**. [Regression test](internal/sync/transfer_test.go#L362-L387)
+
+```sh
+go test -count=1 -run '^TestEraseSkipsFlashThatChangedDuringCopy$' ./internal/sync
+```
+
+## What the pilot sees
+
+- **Transfer progress and saved recordings.** Each copy is grouped by controller and collection time. One flash dump can contain several flights.
+- **What changed since last time.** The dashboard can identify a repeat dump or a newly appended recording header when the previous bytes match. **Channel details** shows which filtered and unfiltered gyro axes the header declares. Open the file in Betaflight’s Viewer to inspect the samples.
+- **Downloads and notes.** Download a single `.bbl` or select up to 100 recordings for a ZIP with manifests and notes. Add a controller nickname or a note about a flight while it is still fresh.
 
 ## Current status and compatibility
 
-**Experimental. Reliability fixes have automated regression tests; physical image, Wi-Fi and controller acceptance remain outstanding. Older release images may lack these changes.**
+**Experimental.** On an earlier build, a pilot downloaded an 8 MiB recording and opened it in Blackbox Explorer. The pilot also reported losing Wi-Fi after unplugging the controller. The next field check is to repeat that sequence on an image built from this revision. [Field report](DEVELOPMENT_TESTING.md#first-field-report--11-november-2026) · [Software audit](DEVELOPMENT_TESTING.md#local-code-and-appliance-audit-27-november-2026)
 
-- **Betaflight / SPI flash:** primary workflow; transfer sizes and storage-device parsing have regression tests, with hardware validation still required.
-- **iNav — Experimental; copying currently disabled.**
-- **FC-side SD cards and ArduPilot:** not supported.
-- **Pi Zero W / Zero 2 W:** build targets exist; this checkout does not establish physical compatibility, boot time or transfer speed.
-- **Dashboard:** reads boot-scoped transfer status and lists saved recordings. Each flash copy may contain several flights; displayed times identify collection, not flight time.
-- **Blackbox capture check.** After a copy, the dashboard identifies repeated dumps and newly appended recording headers when it can match the previous saved bytes. Open **Channel details** to see which headers declare filtered and unfiltered gyro on X, Y and Z. Use Betaflight’s Viewer to inspect the samples.
-- **Batch download:** select recordings and choose **Download selected** for one ZIP with `.bbl` files, manifests, notes and controller names. Up to 100 recordings per ZIP; controller/session folders keep files distinct.
-- **Pilot context:** use **Edit details** on a recording to add optional notes or a controller nickname. Save each section separately. Blank fields restore the unlabelled display. Annotations do not change the recording or transfer manifest; collection does not require them.
-
-The code hashes received bytes and compares them with a reread of the saved file. This checks saved-copy consistency, not an independent checksum supplied by the controller or the validity of the blackbox log.
-
-**Automatic controller erasure and storage cleanup default to off.** Keep `erase_after_sync = false` and `storage_pressure_cleanup = false` during evaluation. Invalid configuration prevents copying. Upgrades retain existing configuration, including previously enabled destructive settings. Use `--dry-run` for manual testing to skip erasure.
-
-Signed offline application updates are available through **Software update** in this candidate. See [upgrade support, bootstrap and signing setup](docs/OFFLINE_UPDATES.md). Production signing must be provisioned before a release; no universal historical-image compatibility is claimed.
-
-## What you need
-
-- Raspberry Pi Zero W or Zero 2 W.
-- microSD card, 16 GB or larger.
-- Suitable 5 V USB supply or power bank.
-- USB OTG adapter and a data cable for the controller.
-- A Betaflight controller configured to log to internal SPI flash.
-
-## Getting started for evaluation
-
-1. Review the limitations above, then download a Raspberry Pi image from [Releases](https://github.com/proeugene/logfalcon/releases). Choose a candidate whose release notes identify these safety fixes; verify its image against `checksums.txt`. Do not assume an older image matches this checkout.
-2. Flash it with Raspberry Pi Imager or Etcher. Set your country and optionally change the hotspot settings in `logfalcon-config.txt` on the boot partition.
-3. Power the Pi through **PWR IN**. Before connecting a controller, disable automatic erasure and storage cleanup in the configuration. See the [setup guide](https://proeugene.github.io/logfalcon/guide.html#setup).
-4. Connect to the unique `LogFalcon-XXXXXXXXXXXX` Wi-Fi hotspot (existing/custom names are preserved) and open **http://log.falcon** or **http://192.168.4.1**. The temporary default Wi-Fi password is `fpvpilot`. Optional first-use setup lets you change the name, password and country or choose “Skip for now”. “No internet” is expected; automatic copying works without setup or a phone.
-5. Connect the controller through the Pi's **USB / OTG data port**. Keep it connected until the dashboard records completion. Confirm dashboard, service log and LED behaviour during hardware acceptance.
-6. Wait for the saved-log list to update automatically, download the `.bbl`, and check that it opens in Blackbox Explorer. Keep the original controller data during evaluation.
+This revision targets Betaflight controllers with internal SPI flash and the Pi Zero W or Zero 2 W. Each Pi model needs its own physical acceptance test. iNav copying is disabled. Controller-side SD cards and ArduPilot are unsupported. [Compatibility evidence](docs/FC_COMPATIBILITY_ANALYSIS.md)
 
 ## Engineering and development
 
-[Architecture and recovery](docs/ARCHITECTURE.md) · [AI-assisted development](docs/AI_ASSISTED_DEVELOPMENT.md) · [Compatibility evidence](docs/FC_COMPATIBILITY_ANALYSIS.md)
+One Go binary runs as separate Linux services. The USB service publishes its progress to a shared file that the dashboard and the Pi’s status LED both read. The dashboard can restart while a copy is in progress and pick up the same transfer. [Process map](docs/ARCHITECTURE.md#one-binary-separate-processes) · [Signed offline updates and rollback](docs/OFFLINE_UPDATES.md)
 
-The [guide](https://proeugene.github.io/logfalcon/guide.html) covers downloads, configuration, LED behaviour, troubleshooting, SSH administration, CLI usage and local dashboard testing.
+I used a coding assistant to help implement and test LogFalcon. Early tests used LogFalcon’s own encoder to simulate a controller, so both sides could agree on the same protocol mistake. Fixed test packets tied to a specific Betaflight revision give the decoder a separate reference. [AI-assisted development retrospective](docs/AI_ASSISTED_DEVELOPMENT.md) · [Protocol fixtures](internal/msp/testdata/README.md)
 
-Requires **Go 1.27**. The [contributor guide](CONTRIBUTING.md) gives the tested patch and verification commands. The application is a single Go binary; the Pi image also supplies Linux services and hotspot utilities.
+With **Go 1.27**, run `make build` for a native binary or `make test` for the race-enabled suite. The contributor guide covers linting, Pi cross-builds and SD images. [Contributing](CONTRIBUTING.md) · [Diagnostics and testing](DEVELOPMENT_TESTING.md) · [Report an issue](https://github.com/proeugene/logfalcon/issues)
 
-```sh
-make build       # Native binary
-make test        # Tests with the race detector
-make lint        # Requires golangci-lint
-make build-pi    # Linux ARM6
-make build-pi2   # Linux ARM64
-```
+## Getting started for evaluation
 
-Build a complete local SD image with Docker: `bash pi-gen/build.sh`. The script
-runs the Linux build tools inside Docker on macOS or Linux and saves the image,
-checksums and log under `pi-gen/deploy/`. See [CONTRIBUTING.md](CONTRIBUTING.md).
-Main and release tags build the OS from scratch; other branches reuse a compatible
-base OS cache. Use `bash pi-gen/build.sh --clean` to force a fresh OS build.
+You’ll need a Pi Zero W or Zero 2 W, a microSD card of at least 16 GB, a 5 V supply, a USB OTG adapter and a controller data cable.
 
-See [development diagnostics and physical testing](DEVELOPMENT_TESTING.md) for the default debug logging (`DEBUG=true`, UK country `GB`) and collecting `LOGFALCON-DIAGNOSTICS/latest.json` from the SD card on a Mac.
+1. Choose an image whose release notes cover the safeguards you intend to test. Verify its checksum, flash it and set your Wi-Fi country in `logfalcon-config.txt` on the boot partition. [Release assets](https://github.com/proeugene/logfalcon/releases)
+2. Power the Pi through **PWR IN**. Before connecting the controller, confirm `erase_after_sync = false` and `storage_pressure_cleanup = false`. Both default to off on fresh installs. Upgrades preserve existing settings, including previously enabled erasure. [Setup guide](https://proeugene.github.io/logfalcon/guide.html#setup)
+3. Join the Pi’s hotspot and open **http://log.falcon** or **http://192.168.4.1**. A fresh install uses `LogFalcon-XXXXXXXXXXXX` and the temporary password `fpvpilot`. Upgrades keep the configured network name.
+4. Stop recording, connect the controller to the Pi’s **USB / OTG data port** and leave it connected until the dashboard shows completion. Download the `.bbl` and open it in Blackbox Explorer.
 
-Tests run without connected hardware. Passing tests and cross-compilation do not establish field reliability. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution instructions and [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for image/release checks.
-
-Report problems through [GitHub Issues](https://github.com/proeugene/logfalcon/issues), including the Pi model, FC board, firmware version and service log. See [CHANGELOG.md](CHANGELOG.md) for version history.
-
-Declared [MIT licence](LICENSE); see the [provenance review](docs/PROVENANCE.md) before redistribution.
+[Project website](https://proeugene.github.io/logfalcon/) · [CI runs](https://github.com/proeugene/logfalcon/actions/workflows/go-ci.yml) · [Changelog](CHANGELOG.md) · [Release checklist](RELEASE_CHECKLIST.md) · [MIT licence](LICENSE) · [Provenance](docs/PROVENANCE.md)

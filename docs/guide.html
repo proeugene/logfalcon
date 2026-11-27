@@ -41,6 +41,7 @@
           <li><span>Flash it using Raspberry Pi Imager or Etcher. On the boot partition, optionally edit <code>logfalcon-config.txt</code> to set <code>SSID</code>, <code>PASSWORD</code> and <code>COUNTRY_CODE</code> (for example, <code>GB</code> in the UK).</span></li>
           <li><span>Insert the card, power the Pi through <strong>PWR IN</strong> and wait for its hotspot to appear.</span></li>
           <li><span>On a fresh installation, join the Wi-Fi network named <strong>LogFalcon-</strong> followed by the device's 12-character ID, or your configured network name. Upgrades keep the existing name. The temporary default password is <code>fpvpilot</code>. Open <a href="http://log.falcon">http://log.falcon</a> or <a href="http://192.168.4.1">http://192.168.4.1</a>.</span></li>
+          <li><span>If <strong>Set up Wi-Fi</strong> opens, choose <strong>Skip for now</strong> to keep your current settings and go straight to <strong>Recordings</strong>. To change the hotspot details, choose <strong>Review Wi-Fi changes</strong>, then <strong>Save and restart Wi-Fi</strong>. Rejoin the hotspot using the details you saved.</span></li>
         </ol>
         <h3 id="copy-settings">Before connecting a controller</h3>
         <p>Connect over SSH with <code>ssh pi@192.168.4.1</code>. In <code>/etc/logfalcon/logfalcon.toml</code>, confirm both settings have the following values.</p>
@@ -54,9 +55,15 @@ storage_pressure_cleanup = false</code></pre>
         <ol class="numbered-list">
           <li><span>Check that the controller’s Blackbox Device is <strong>SPI Flash</strong> and that it contains a recording. Stop recording before collection.</span></li>
           <li><span>Open the dashboard on the Pi’s Wi-Fi. Connect the controller to the Pi’s <strong>USB / OTG data port</strong>. The copy starts automatically. Keep the controller connected while the dashboard shows progress.</span></li>
-          <li><span>Look for <strong>Copy completed.</strong> Check the saved size and the message <strong>Data retained on controller.</strong> If the connection drops first, rejoin the Pi’s Wi-Fi and check the result on the dashboard.</span></li>
+          <li><span>Under <strong>Latest transfer</strong>, look for <strong>Copy completed.</strong> Check the saved size and the message <strong>Data retained on controller.</strong> If the connection drops first, rejoin the Pi’s Wi-Fi and check the result on the dashboard.</span></li>
           <li><span>Choose <strong>Download saved .bbl</strong>. Open the file in the Blackbox Viewer in the <a href="https://app.betaflight.com/">Betaflight App</a> and select a flight to see its traces. If the app needs internet access, save the file to your phone first and open it when you’re back online.</span></li>
         </ol>
+        <figure class="dashboard-preview">
+          <a href="images/dashboard-preview.png" aria-label="View the completed transfer at full size">
+            <img src="images/dashboard-preview.png" width="1040" height="490" loading="lazy" alt="Recordings screen showing 4.0 MB saved, data retained on the controller and the Download saved .bbl button">
+          </a>
+          <figcaption>A simulated 4 MB transfer. The second recording header is new in this copy.</figcaption>
+        </figure>
         <pre><code># Follow transfer results over SSH
 journalctl -u 'logfalcon@*' -f</code></pre>
         <p>When reporting a test, include the Pi model, FC model, firmware, bytes copied, time taken and whether the downloaded file opens correctly.</p>
@@ -123,7 +130,7 @@ make build-pi2</code></pre>
         <h3 id="dashboard-preview">Preview the dashboard locally</h3>
         <pre><code>mkdir -p /tmp/logfalcon-preview
 LOGFALCON_STORAGE_PATH=/tmp/logfalcon-preview LOGFALCON_WEB_PORT=8080 ./bin/logfalcon --web</code></pre>
-        <p>Open <code>http://localhost:8080</code>. This previews the log browser; it does not emulate a controller, hotspot or live transfer.</p>
+        <p>Open <code>http://localhost:8080</code> to see the dashboard’s <strong>Recordings</strong>, <strong>Updates</strong> and <strong>Settings</strong> pages. The local preview runs without a flight controller or Pi hotspot.</p>
         <h3 id="build-image">Build the image</h3>
         <p>With Docker running on macOS or Linux, run the following command from the root of the checkout you want to evaluate.</p>
         <pre><code>bash pi-gen/build.sh --clean</code></pre>
@@ -133,7 +140,7 @@ LOGFALCON_STORAGE_PATH=/tmp/logfalcon-preview LOGFALCON_WEB_PORT=8080 ./bin/logf
       </section>
       <section id="cli" class="doc-section">
         <h2 class="section-label">CLI reference</h2>
-        <pre><code>logfalcon --web                              # Log browser
+        <pre><code>logfalcon --web                              # Start the dashboard
 logfalcon --port /dev/ttyACM0 --dry-run        # Copy; skip erasure
 logfalcon --port /dev/ttyUSB0 --dry-run        # Explicit USB serial port
 logfalcon --config /path/to/logfalcon.toml --web

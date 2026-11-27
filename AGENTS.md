@@ -26,6 +26,7 @@ Start with [the process map and copy/recovery ordering](docs/ARCHITECTURE.md). F
 
 ## Web UI quirks
 - Templates and client-side behaviour live in Go files under `internal/web/`. Route registration is in [server.go](internal/web/server.go). The dashboard polls `/status`; `/events` also exposes an SSE stream.
+- For stylesheet locations, logo sources and the shared screenshot, see [Dashboard and website visuals](docs/ARCHITECTURE.md#dashboard-and-website-visuals).
 - Mutating browser routes require the server's CSRF token. The local hotspot is the access boundary.
 - Captive portal paths respond at `/hotspot-detect.html`, `/generate_204`, `/ncsi.txt`, etc. (iOS/Android/Windows compatibility).
 - Health endpoint at `GET /health` returns JSON with storage, hotspot, and shared sync status.

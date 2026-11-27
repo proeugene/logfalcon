@@ -2,7 +2,15 @@
 
 All notable changes to LogFalcon are documented here.
 
-## Unreleased - local evaluation candidate, 20 October 2026
+## Unreleased
+
+### 27 November 2026
+
+- The Pi dashboard, homepage and pilot guide now share the Peregrine logo and
+  Field Kit colours. The mobile transfer panel puts the download button below
+  progress when a copy finishes.
+
+### Local evaluation candidate, 20 October 2026
 
 - Keep controller erasure and storage-pressure cleanup off by default; reject
   invalid configuration. Existing upgrade settings, including old opt-ins, remain.

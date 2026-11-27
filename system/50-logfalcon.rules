@@ -1,0 +1,9 @@
+// Only the two service operations needed by the appliance UI.
+polkit.addRule(function(action, subject) {
+    if (subject.user == "bbsyncer" &&
+        action.id == "org.freedesktop.systemd1.manage-units" &&
+        ((action.lookup("unit") == "hostapd.service" && action.lookup("verb") == "restart") ||
+         (action.lookup("unit") == "logfalcon-shutdown.service" && action.lookup("verb") == "start"))) {
+        return polkit.Result.YES;
+    }
+});

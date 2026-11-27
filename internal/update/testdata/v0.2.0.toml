@@ -1,0 +1,30 @@
+# LogFalcon — Configuration
+# Copy to /etc/logfalcon/logfalcon.toml on the Pi
+
+# Serial port to connect to the FC
+serial_baud = 115200
+serial_port = ""           # empty = auto-detect /dev/ttyACM*
+serial_timeout = 5.0
+
+# Pi SD card storage path
+storage_path = "/mnt/logfalcon-logs"
+min_free_space_mb = 200
+storage_pressure_cleanup = true  # auto-delete oldest sessions only if needed to stay above reserve
+
+# Sync behaviour
+erase_after_sync = true    # set to false for dry-run / testing
+flash_chunk_size = 16384
+erase_timeout_sec = 120
+flash_read_compression = false  # false = more reliable; true = faster
+
+# LED
+led_backend = "sysfs"      # "sysfs" (built-in ACT LED) or "gpio" (external)
+led_gpio_pin = 17
+
+# Wi-Fi hotspot and web server
+hotspot_ssid = "BF-Blackbox"
+hotspot_password = "fpvpilot"
+web_port = 80
+
+# Power management
+idle_shutdown_minutes = 0  # 0 = disabled; auto-shutdown after N minutes of no sync activity

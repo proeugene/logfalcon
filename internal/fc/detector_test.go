@@ -83,19 +83,13 @@ func TestDetectINAV(t *testing.T) {
 		bbDevice: msp.BlackboxDeviceNone, // should be ignored
 	}
 
-	info, err := Detect(c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if info.Variant != msp.INAVVariant {
-		t.Errorf("Variant = %q, want %q", info.Variant, msp.INAVVariant)
-	}
-	if info.BlackboxDevice != msp.BlackboxDeviceFlash {
-		t.Errorf("BlackboxDevice = %d, want %d (flash assumed for INAV)", info.BlackboxDevice, msp.BlackboxDeviceFlash)
+	if _, err := Detect(c); err == nil {
+		t.Fatal("unvalidated iNav protocol must be rejected")
 	}
 	if c.bbCalled {
-		t.Error("GetBlackboxConfig should NOT be called for INAV")
+		t.Fatal("iNav must be rejected before storage operations")
 	}
+
 }
 
 func TestDetectUnsupported(t *testing.T) {

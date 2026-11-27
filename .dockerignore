@@ -1,10 +1,7 @@
-.git
-.venv
-.pytest_cache
-.ruff_cache
-__pycache__
-*.egg-info
-*.pyc
-*.pyo
-*.so
-pi-gen/pi-gen-repo
+# The root Dockerfile builds only the Go appliance.
+**
+!go.mod
+!go.sum
+!cmd/logfalcon/*.go
+!internal/**/*.go
+**/*_test.go

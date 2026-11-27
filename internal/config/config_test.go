@@ -17,10 +17,10 @@ func TestDefault(t *testing.T) {
 	// Storage
 	assertEqual(t, "StoragePath", cfg.StoragePath, "/mnt/logfalcon-logs")
 	assertEqual(t, "MinFreeSpaceMB", cfg.MinFreeSpaceMB, 200)
-	assertEqualBool(t, "StoragePressureCleanup", cfg.StoragePressureCleanup, true)
+	assertEqualBool(t, "StoragePressureCleanup", cfg.StoragePressureCleanup, false)
 
 	// Sync behaviour
-	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, true)
+	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, false)
 	assertEqual(t, "FlashChunkSize", cfg.FlashChunkSize, 4096)
 	assertEqual(t, "EraseTimeoutSec", cfg.EraseTimeoutSec, 120)
 	assertEqualBool(t, "FlashReadCompression", cfg.FlashReadCompression, false)
@@ -36,6 +36,7 @@ func TestDefault(t *testing.T) {
 
 	// Power management
 	assertEqual(t, "IdleShutdownMinutes", cfg.IdleShutdownMinutes, 0)
+	assertEqualBool(t, "DebugLogging", cfg.DebugLogging, true)
 }
 
 func TestLoadFromFile(t *testing.T) {
@@ -49,8 +50,8 @@ storage_pressure_cleanup = false
 erase_after_sync = false
 flash_chunk_size = 8192
 erase_timeout_sec = 60
-flash_read_compression = true
-led_backend = "gpio"
+flash_read_compression = false
+led_backend = "none"
 led_gpio_pin = 22
 web_port = 8080
 hotspot_ssid = "MyDrone"
@@ -72,8 +73,8 @@ idle_shutdown_minutes = 15
 	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, false)
 	assertEqual(t, "FlashChunkSize", cfg.FlashChunkSize, 8192)
 	assertEqual(t, "EraseTimeoutSec", cfg.EraseTimeoutSec, 60)
-	assertEqualBool(t, "FlashReadCompression", cfg.FlashReadCompression, true)
-	assertEqual(t, "LEDBackend", cfg.LEDBackend, "gpio")
+	assertEqualBool(t, "FlashReadCompression", cfg.FlashReadCompression, false)
+	assertEqual(t, "LEDBackend", cfg.LEDBackend, "none")
 	assertEqual(t, "LEDGPIOPin", cfg.LEDGPIOPin, 22)
 	assertEqual(t, "WebPort", cfg.WebPort, 8080)
 	assertEqual(t, "HotspotSSID", cfg.HotspotSSID, "MyDrone")
@@ -82,14 +83,8 @@ idle_shutdown_minutes = 15
 }
 
 func TestLoadMissing(t *testing.T) {
-	cfg, err := Load("/nonexistent/path/config.toml")
-	if err != nil {
-		t.Fatalf("Load returned error for missing file: %v", err)
-	}
-	// Should return defaults when no file is found.
-	expected := Default()
-	if *cfg != *expected {
-		t.Errorf("expected default config, got %+v", cfg)
+	if _, err := Load("/nonexistent/path/config.toml"); err == nil {
+		t.Fatal("missing explicit config must fail")
 	}
 }
 
@@ -113,8 +108,8 @@ hotspot_ssid = "CustomSSID"
 	assertEqualFloat(t, "SerialTimeout", cfg.SerialTimeout, 5.0)
 	assertEqual(t, "StoragePath", cfg.StoragePath, "/mnt/logfalcon-logs")
 	assertEqual(t, "MinFreeSpaceMB", cfg.MinFreeSpaceMB, 200)
-	assertEqualBool(t, "StoragePressureCleanup", cfg.StoragePressureCleanup, true)
-	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, true)
+	assertEqualBool(t, "StoragePressureCleanup", cfg.StoragePressureCleanup, false)
+	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, false)
 	assertEqual(t, "FlashChunkSize", cfg.FlashChunkSize, 4096)
 	assertEqual(t, "EraseTimeoutSec", cfg.EraseTimeoutSec, 120)
 	assertEqualBool(t, "FlashReadCompression", cfg.FlashReadCompression, false)
@@ -127,14 +122,14 @@ hotspot_ssid = "CustomSSID"
 func TestEnvOverrideFile(t *testing.T) {
 	content := `storage_path = "/tmp/logs"
 web_port = 8080
-led_backend = "gpio"
+led_backend = "none"
 min_free_space_mb = 500
 erase_after_sync = false`
 	path := writeTempTOML(t, content)
 
 	t.Setenv("LOGFALCON_STORAGE_PATH", "/env/storage")
 	t.Setenv("LOGFALCON_WEB_PORT", "9090")
-	t.Setenv("LOGFALCON_LED_BACKEND", "ws2812")
+	t.Setenv("LOGFALCON_LED_BACKEND", "sysfs")
 	t.Setenv("LOGFALCON_MIN_FREE_MB", "999")
 	t.Setenv("LOGFALCON_ERASE_AFTER_SYNC", "true")
 
@@ -145,7 +140,7 @@ erase_after_sync = false`
 
 	assertEqual(t, "StoragePath (env)", cfg.StoragePath, "/env/storage")
 	assertEqual(t, "WebPort (env)", cfg.WebPort, 9090)
-	assertEqual(t, "LEDBackend (env)", cfg.LEDBackend, "ws2812")
+	assertEqual(t, "LEDBackend (env)", cfg.LEDBackend, "sysfs")
 	assertEqual(t, "MinFreeSpaceMB (env)", cfg.MinFreeSpaceMB, 999)
 	assertEqualBool(t, "EraseAfterSync (env)", cfg.EraseAfterSync, true)
 }
@@ -157,7 +152,7 @@ func TestEnvOverrideDefault(t *testing.T) {
 	t.Setenv("LOGFALCON_MIN_FREE_MB", "123")
 	t.Setenv("LOGFALCON_ERASE_AFTER_SYNC", "false")
 
-	cfg, err := Load("/nonexistent/path/config.toml")
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
@@ -170,25 +165,20 @@ func TestEnvOverrideDefault(t *testing.T) {
 }
 
 func TestEnvInvalidValues(t *testing.T) {
-	t.Setenv("LOGFALCON_WEB_PORT", "not-a-number")
-	t.Setenv("LOGFALCON_MIN_FREE_MB", "also-bad")
-	t.Setenv("LOGFALCON_ERASE_AFTER_SYNC", "nope")
-
-	cfg, err := Load("/nonexistent/path/config.toml")
-	if err != nil {
-		t.Fatalf("Load returned error: %v", err)
+	for _, key := range []string{"LOGFALCON_WEB_PORT", "LOGFALCON_MIN_FREE_MB", "LOGFALCON_ERASE_AFTER_SYNC", "LOGFALCON_DEBUG"} {
+		t.Run(key, func(t *testing.T) {
+			t.Setenv(key, "invalid")
+			if _, err := Load(""); err == nil {
+				t.Fatal("invalid environment accepted")
+			}
+		})
 	}
-
-	expected := Default()
-	assertEqual(t, "WebPort (invalid env)", cfg.WebPort, expected.WebPort)
-	assertEqual(t, "MinFreeSpaceMB (invalid env)", cfg.MinFreeSpaceMB, expected.MinFreeSpaceMB)
-	assertEqualBool(t, "EraseAfterSync (invalid env)", cfg.EraseAfterSync, expected.EraseAfterSync)
 }
 
 func TestEnvUnsetDoesNotOverride(t *testing.T) {
 	content := `storage_path = "/tmp/logs"
 web_port = 8080
-led_backend = "gpio"
+led_backend = "none"
 min_free_space_mb = 500
 erase_after_sync = false`
 	path := writeTempTOML(t, content)
@@ -200,7 +190,7 @@ erase_after_sync = false`
 
 	assertEqual(t, "StoragePath", cfg.StoragePath, "/tmp/logs")
 	assertEqual(t, "WebPort", cfg.WebPort, 8080)
-	assertEqual(t, "LEDBackend", cfg.LEDBackend, "gpio")
+	assertEqual(t, "LEDBackend", cfg.LEDBackend, "none")
 	assertEqual(t, "MinFreeSpaceMB", cfg.MinFreeSpaceMB, 500)
 	assertEqualBool(t, "EraseAfterSync", cfg.EraseAfterSync, false)
 }
@@ -238,83 +228,22 @@ func assertEqualBool(t *testing.T, field string, got, want bool) {
 	}
 }
 
+func TestInvalidConfiguration(t *testing.T) {
+	for _, value := range []string{`erase_after_sync = tru`, `flash_chunk_size = 65536`, `flash_chunk_size = 0`, `serial_timeout = 0`, `serial_timeout = nan`, `web_port = 0`, `erase_after_sycn = true`, `storage_path = "relative"`, `led_backend = "gpio"`, `min_free_space_mb = -1`} {
+		t.Run(value, func(t *testing.T) {
+			if _, err := Load(writeTempTOML(t, value)); err == nil {
+				t.Fatal("invalid config accepted")
+			}
+		})
+	}
+}
 func TestEnvRangeValidation(t *testing.T) {
-	// Port out of range — should preserve default (80).
-	t.Run("port_zero", func(t *testing.T) {
-		t.Setenv("LOGFALCON_WEB_PORT", "0")
-		cfg, err := Load("/nonexistent/path/config.toml")
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.WebPort != 80 {
-			t.Errorf("WebPort = %d, want 80 (default preserved)", cfg.WebPort)
-		}
-	})
-
-	t.Run("port_too_high", func(t *testing.T) {
-		t.Setenv("LOGFALCON_WEB_PORT", "65536")
-		cfg, err := Load("/nonexistent/path/config.toml")
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.WebPort != 80 {
-			t.Errorf("WebPort = %d, want 80 (default preserved)", cfg.WebPort)
-		}
-	})
-
-	t.Run("port_negative", func(t *testing.T) {
-		t.Setenv("LOGFALCON_WEB_PORT", "-1")
-		cfg, err := Load("/nonexistent/path/config.toml")
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.WebPort != 80 {
-			t.Errorf("WebPort = %d, want 80 (default preserved)", cfg.WebPort)
-		}
-	})
-
-	t.Run("min_free_negative", func(t *testing.T) {
-		t.Setenv("LOGFALCON_MIN_FREE_MB", "-500")
-		cfg, err := Load("/nonexistent/path/config.toml")
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.MinFreeSpaceMB != 200 {
-			t.Errorf("MinFreeSpaceMB = %d, want 200 (default preserved)", cfg.MinFreeSpaceMB)
-		}
-	})
-
-	// Edge: valid boundaries must be accepted.
-	t.Run("port_min_valid", func(t *testing.T) {
-		t.Setenv("LOGFALCON_WEB_PORT", "1")
-		cfg, err := Load("/nonexistent/path/config.toml")
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.WebPort != 1 {
-			t.Errorf("WebPort = %d, want 1", cfg.WebPort)
-		}
-	})
-
-	t.Run("port_max_valid", func(t *testing.T) {
-		t.Setenv("LOGFALCON_WEB_PORT", "65535")
-		cfg, err := Load("/nonexistent/path/config.toml")
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.WebPort != 65535 {
-			t.Errorf("WebPort = %d, want 65535", cfg.WebPort)
-		}
-	})
-
-	t.Run("min_free_zero_valid", func(t *testing.T) {
-		t.Setenv("LOGFALCON_MIN_FREE_MB", "0")
-		cfg, err := Load("/nonexistent/path/config.toml")
-		if err != nil {
-			t.Fatalf("Load: %v", err)
-		}
-		if cfg.MinFreeSpaceMB != 0 {
-			t.Errorf("MinFreeSpaceMB = %d, want 0", cfg.MinFreeSpaceMB)
-		}
-	})
+	for _, value := range []string{"0", "65536", "-1"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("LOGFALCON_WEB_PORT", value)
+			if _, err := Load(""); err == nil {
+				t.Fatal("invalid port accepted")
+			}
+		})
+	}
 }

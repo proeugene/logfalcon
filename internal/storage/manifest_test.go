@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +48,7 @@ func TestMakeSessionDir(t *testing.T) {
 	}
 
 	// Session directory: YYYY-MM-DD_HHMMSS
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().UTC().Format("2006-01-02")
 	if !strings.HasPrefix(parts[1], today) {
 		t.Errorf("session dir = %q, want prefix %s", parts[1], today)
 	}
@@ -70,7 +73,7 @@ func TestWriteManifest(t *testing.T) {
 	}
 
 	timing := map[string]float64{"download_s": 12.5, "erase_s": 3.2}
-	err = WriteManifest(dir, info, "deadbeef01234567", 1024*1024, false, false, timing)
+	err = WriteManifest(root, dir, info, "deadbeef01234567", 1024*1024, false, false, timing)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}
@@ -130,14 +133,14 @@ func TestUpdateManifestErase(t *testing.T) {
 	}
 
 	// Write initial manifest.
-	err = WriteManifest(dir, info, "aabbccdd", 512, false, false, nil)
+	err = WriteManifest(root, dir, info, "aabbccdd", 512, false, false, nil)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}
 
 	// Update erase fields.
 	timing := map[string]float64{"erase_s": 5.1}
-	err = UpdateManifestErase(dir, true, timing)
+	err = UpdateManifestErase(root, dir, true, timing)
 	if err != nil {
 		t.Fatalf("UpdateManifestErase: %v", err)
 	}
@@ -181,7 +184,7 @@ func TestListSessions(t *testing.T) {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		err := WriteManifest(d, info, "hash"+string(rune('0'+i)), int64(i*100), false, false, nil)
+		err := WriteManifest(root, d, info, "hash"+string(rune('0'+i)), int64(i*100), false, false, nil)
 		if err != nil {
 			t.Fatalf("WriteManifest: %v", err)
 		}
@@ -232,7 +235,7 @@ func TestCleanupNotNeeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MakeSessionDir: %v", err)
 	}
-	err = WriteManifest(dir, info, "abcd", 256, false, false, nil)
+	err = WriteManifest(root, dir, info, "abcd", 256, false, false, nil)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}
@@ -256,6 +259,51 @@ func TestCleanupNotNeeded(t *testing.T) {
 	}
 }
 
+func TestCleanupOnlyRemovesPublishedRecordings(t *testing.T) {
+	root := t.TempDir()
+	info := testFCInfo()
+	dir, err := MakeSessionDir(root, info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := []byte("saved recording")
+	hash := fmt.Sprintf("%x", sha256.Sum256(data))
+	write := func(dir, name string, b []byte) {
+		t.Helper()
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), b, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	legacy := filepath.Join(filepath.Dir(dir), "2024-06-01_100000")
+	truncated := filepath.Join(filepath.Dir(dir), "2024-06-02_100000")
+	partial := filepath.Join(filepath.Dir(dir), "2024-06-03_100000")
+	unrelated := filepath.Join(root, "photos", "holiday")
+	write(unrelated, "original.jpg", data)
+	write(partial, RawFlashFilename+".partial", data)
+	for _, saved := range []string{dir, legacy, truncated} {
+		write(saved, RawFlashFilename, data)
+		if err := WriteManifest(root, saved, info, hash, int64(len(data)), false, false, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(truncated, RawFlashFilename, data[:1])
+	deleted, err := CleanupOldestSessions(root, math.MaxInt64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deleted) != 2 || filepath.Join(root, deleted[0]) != legacy || filepath.Join(root, deleted[1]) != dir {
+		t.Fatalf("expected only the two completed recordings, oldest first; removed %v", deleted)
+	}
+	for _, file := range []string{filepath.Join(unrelated, "original.jpg"), filepath.Join(partial, RawFlashFilename+".partial"), filepath.Join(truncated, RawFlashFilename)} {
+		if _, err := os.Stat(file); err != nil {
+			t.Fatalf("cleanup lost %s: %v", file, err)
+		}
+	}
+}
+
 func TestAtomicWriteNoTempFileLeak(t *testing.T) {
 	root := t.TempDir()
 	info := testFCInfo()
@@ -265,7 +313,7 @@ func TestAtomicWriteNoTempFileLeak(t *testing.T) {
 		t.Fatalf("MakeSessionDir: %v", err)
 	}
 
-	err = WriteManifest(dir, info, "feedc0ffee", 512, false, false, nil)
+	err = WriteManifest(root, dir, info, "feedc0ffee", 512, false, false, nil)
 	if err != nil {
 		t.Fatalf("WriteManifest: %v", err)
 	}

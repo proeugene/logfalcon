@@ -3,6 +3,7 @@ package led
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -17,6 +18,7 @@ const (
 	Busy          // 150ms on / 150ms off fast blink
 	Done          // 5× rapid flash then 3s solid then off
 	Error         // SOS pattern
+	Saved         // persistent double blink: saved copy completed
 )
 
 // Backend abstracts LED hardware control.
@@ -55,6 +57,7 @@ var patterns = map[State]pattern{
 		// pause
 		{700, 700},
 	}, repeat: true},
+	Saved: {steps: []step{{100, 100}, {100, 1700}}, repeat: true},
 }
 
 // Controller drives an LED through state-based blink patterns.
@@ -81,6 +84,8 @@ func New(backend string, gpioPin int) *Controller {
 		done:    make(chan struct{}),
 	}
 	switch backend {
+	case "none":
+		c.backend = &noopBackend{}
 	case "gpio":
 		c.backend = &gpioBackend{pin: gpioPin}
 	default:
@@ -271,27 +276,62 @@ func (c *Controller) waitForChangeOrStop() bool {
 
 // --- sysfs backend ---
 
-const (
-	sysfsLEDBrightness = "/sys/class/leds/led0/brightness"
-	sysfsLEDTrigger    = "/sys/class/leds/led0/trigger"
-)
+type noopBackend struct{}
 
-type sysfsBackend struct{}
+func (*noopBackend) Set(bool)        {}
+func (*noopBackend) DisableTrigger() {}
+func (*noopBackend) RestoreTrigger() {}
+
+type sysfsBackend struct {
+	dir string
+}
+
+func discoverLED(root string) string {
+	for _, name := range []string{"ACT", "led0"} {
+		dir := filepath.Join(root, name)
+		brightness, e1 := os.Stat(filepath.Join(dir, "brightness"))
+		trigger, e2 := os.Stat(filepath.Join(dir, "trigger"))
+		if e1 == nil && e2 == nil && !brightness.IsDir() && !trigger.IsDir() {
+			return dir
+		}
+	}
+	return ""
+}
+
+func (b *sysfsBackend) write(name, value string) {
+	if b.dir == "" {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(b.dir, name), os.O_WRONLY, 0)
+	if err == nil {
+		_, err = f.WriteString(value)
+		_ = f.Close()
+	}
+	if err != nil {
+		slog.Warn("LED control unavailable; further writes disabled", "error", err)
+		b.dir = ""
+	}
+}
 
 func (b *sysfsBackend) Set(on bool) {
 	val := "0"
 	if on {
 		val = "1"
 	}
-	_ = os.WriteFile(sysfsLEDBrightness, []byte(val), 0644)
+	b.write("brightness", val)
 }
 
 func (b *sysfsBackend) DisableTrigger() {
-	_ = os.WriteFile(sysfsLEDTrigger, []byte("none"), 0644)
+	b.dir = discoverLED("/sys/class/leds")
+	if b.dir == "" {
+		slog.Warn("LED control unavailable: no ACT or led0 attributes")
+		return
+	}
+	b.write("trigger", "none")
 }
 
 func (b *sysfsBackend) RestoreTrigger() {
-	_ = os.WriteFile(sysfsLEDTrigger, []byte("mmc0"), 0644)
+	b.write("trigger", "mmc0")
 }
 
 // --- gpio backend (placeholder) ---

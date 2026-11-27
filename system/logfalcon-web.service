@@ -5,7 +5,8 @@
 [Unit]
 Description=LogFalcon Web Server
 Documentation=https://github.com/proeugene/logfalcon
-After=network.target hostapd.service
+After=logfalcon-config-apply.service network.target hostapd.service logfalcon-runtime.service
+Requires=logfalcon-runtime.service logfalcon-config-apply.service
 
 [Service]
 Type=simple
@@ -40,7 +41,7 @@ LockPersonality=true
 SystemCallArchitectures=native
 
 # Filesystem access — log storage, config, and hostapd settings
-ReadWritePaths=/mnt/logfalcon-logs /etc/logfalcon /etc/hostapd
+ReadWritePaths=/mnt/logfalcon-logs /etc/logfalcon /run/logfalcon
 
 [Install]
 WantedBy=multi-user.target

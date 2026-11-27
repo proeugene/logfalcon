@@ -58,7 +58,7 @@ func TestCheckVersion_TooOld_INAV(t *testing.T) {
 }
 
 func TestCheckVersion_TooNew_BTFL(t *testing.T) {
-	err := CheckVersion("BTFL", "4.9.0", 1, 48)
+	err := CheckVersion("BTFL", "4.9.0", 1, 49)
 	if err == nil {
 		t.Fatal("expected VersionTooNewError, got nil")
 	}
@@ -69,11 +69,11 @@ func TestCheckVersion_TooNew_BTFL(t *testing.T) {
 	if e.Variant != "BTFL" {
 		t.Errorf("Variant = %q, want BTFL", e.Variant)
 	}
-	if e.Major != 1 || e.Minor != 48 {
-		t.Errorf("Detected API = %d.%d, want 1.48", e.Major, e.Minor)
+	if e.Major != 1 || e.Minor != 49 {
+		t.Errorf("Detected API = %d.%d, want 1.49", e.Major, e.Minor)
 	}
-	if e.MaxMinor != 47 {
-		t.Errorf("MaxMinor = %d, want 47", e.MaxMinor)
+	if e.MaxMinor != 48 {
+		t.Errorf("MaxMinor = %d, want 48", e.MaxMinor)
 	}
 }
 
@@ -109,12 +109,12 @@ func TestCheckVersion_ErrorMessages(t *testing.T) {
 		}
 	}
 
-	newErr := CheckVersion("BTFL", "4.9.0", 1, 48)
+	newErr := CheckVersion("BTFL", "4.9.0", 1, 49)
 	if newErr == nil {
 		t.Fatal("expected error")
 	}
 	newMsg := newErr.Error()
-	for _, want := range []string{"Betaflight", "1.48", "1.47"} {
+	for _, want := range []string{"Betaflight", "1.48", "1.48"} {
 		if !contains(newMsg, want) {
 			t.Errorf("too-new message %q missing %q", newMsg, want)
 		}

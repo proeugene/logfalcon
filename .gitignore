@@ -1,6 +1,6 @@
 # Go
 bin/
-logfalcon
+/logfalcon
 *.exe
 
 # Editor
@@ -17,7 +17,21 @@ logfalcon
 
 # pi-gen build artifacts
 pi-gen/pi-gen-repo/
+pi-gen/deploy/
+pi-gen/cache/
 cover.out
 
 # AI session transcripts
 session-ses_*.md
+
+# Never commit images, diagnostics or local controller data
+*.img
+*.img.xz
+*.[bB][bB][lL]
+*.partial
+LOGFALCON-DIAGNOSTICS/
+release-assets/
+
+# Offline update packages and private signing seeds
+*.lfu
+*.seed

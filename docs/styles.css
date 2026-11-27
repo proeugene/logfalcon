@@ -95,21 +95,22 @@ nav {
 .hero {
   position: relative;
   z-index: 1;
-  padding: 80px 32px 60px;
-  max-width: 960px;
+  padding: 56px 32px;
+  max-width: 1220px;
   margin: 0 auto;
 }
 
 /* HUD corner brackets */
 .hud-frame {
   position: relative;
-  padding: 48px 40px;
-  text-align: center;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: clamp(24px, 4vw, 64px);
+  padding: clamp(24px, 4vw, 52px);
 }
 .hud-frame::before,
-.hud-frame::after,
-.hud-frame > .hud-br,
-.hud-frame > .hud-bl {
+.hud-frame::after {
   content: '';
   position: absolute;
   width: 28px;
@@ -121,8 +122,6 @@ nav {
 .hud-frame::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
 .hud-frame::after  { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
 
-/* We add 2 more corners via JS-free approach using box-shadow trick on separate elements */
-/* Use a wrapper div instead */
 .hud-frame .corner-tr,
 .hud-frame .corner-bl {
   position: absolute;
@@ -161,14 +160,29 @@ h1 {
   max-width: 520px;
   margin: 0 auto 36px;
 }
+.hero-copy .hero-sub { margin: 0 0 24px; }
+.hero-copy h1 { font-size: clamp(38px, 4.6vw, 60px); }
+.dashboard-preview a {
+  display: block;
+  border: 1px solid #47605f;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.dashboard-preview img { display: block; width: 100%; height: auto; }
+.dashboard-preview figcaption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
 
 .ctas {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 24px;
-  justify-content: center;
+  align-items: center;
+  gap: 8px 20px;
 }
+.ctas .text-link { font-size: 14px; text-underline-offset: 3px; }
 
 .btn-primary {
   display: inline-flex;
@@ -189,28 +203,6 @@ h1 {
 .btn-primary:hover {
   background: #33ddff;
   box-shadow: 0 0 24px rgba(0, 210, 255, 0.4);
-}
-
-.btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  background: transparent;
-  color: var(--text);
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: bold;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  text-decoration: none;
-  padding: 13px 28px;
-  border: 1px solid var(--border-h);
-  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
-  transition: border-color 0.2s, color 0.2s, background 0.2s;
-}
-.btn-ghost:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-glow);
 }
 
 /* ---- SECTIONS ---- */
@@ -307,10 +299,17 @@ footer {
 .footer-sep { opacity: 0.3; }
 
 /* ---- RESPONSIVE MISC ---- */
+@media (max-width: 860px) {
+  .hud-frame { grid-template-columns: 1fr; }
+  .dashboard-preview { width: 100%; max-width: 650px; }
+}
 @media (max-width: 600px) {
   nav { padding: 16px 20px; }
-  .hero { padding: 48px 20px 40px; }
-  .hud-frame { padding: 24px 16px; }
+  .hero { padding: 24px 16px 32px; }
+  .hud-frame { padding: 24px 12px; gap: 20px; }
+  .hero-copy h1 { margin-bottom: 16px; font-size: clamp(34px, 8.6vw, 48px); }
+  .hero-copy .eyebrow { margin-bottom: 12px; }
+  .hero-copy .hero-sub { margin-bottom: 16px; }
   .section { padding: 40px 20px; }
   h1 { font-size: clamp(32px, 9vw, 48px); }
   footer { gap: 8px; flex-wrap: wrap; }
@@ -322,8 +321,6 @@ nav a, footer a { min-height: 44px; display: inline-flex; align-items: center; }
 footer a { color: var(--muted); text-decoration: none; }
 a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 5px; }
 [id] { scroll-margin-top: 100px; }
-.release-note { max-width: 620px; margin: 0 auto; padding: 16px; background: var(--bg-card); border: 1px solid var(--border); color: #a9bdc8; font-size: 14px; text-align: left; }
-.release-note strong { color: var(--text); }
 .section-intro { max-width: 680px; margin-bottom: 28px; color: #a9bdc8; }
 .section-label { margin-bottom: 24px; font-size: 14px; opacity: 1; letter-spacing: 0.1em; }
 .steps { gap: 24px; }

@@ -21,29 +21,36 @@
       <div class="hud-frame">
         <div class="corner-tr" aria-hidden="true"></div>
         <div class="corner-bl" aria-hidden="true"></div>
-        <p class="eyebrow">Open-source · Raspberry Pi · Go</p>
-        <h1>Collect blackbox logs.<br>Without a laptop.</h1>
-        <p class="hero-sub">Plug a Betaflight flight controller into the Pi between flights. It copies the controller’s internal flash over USB so you can download the recording to your phone over the Pi’s own Wi-Fi.</p>
-        <div class="ctas">
-          <a href="guide.html#setup" class="btn-primary">Get started</a>
-          <a href="https://github.com/proeugene/logfalcon" class="btn-ghost">View the code</a>
+        <div class="hero-copy">
+          <p class="eyebrow">Betaflight · Raspberry Pi</p>
+          <h1>Flight logs,<br>without a laptop.</h1>
+          <p class="hero-sub">Plug your flight controller into the Pi between flights. It copies the blackbox recording over USB, ready to download to your phone over the Pi’s own Wi-Fi. The original stays on the controller by default.</p>
+          <div class="ctas">
+            <a href="guide.html#setup" class="btn-primary">Set up a Pi</a>
+            <a href="https://github.com/proeugene/logfalcon/blob/main/docs/ARCHITECTURE.md#copy-and-recovery-ordering" class="text-link">How the copy is checked</a>
+          </div>
         </div>
-        <p class="release-note"><strong>Evaluating on a Pi?</strong> The published images predate this revision’s copy safeguards as of 27 November 2026. The setup guide shows how to build the matching image and keep the original recording on the controller.</p>
+        <figure class="dashboard-preview">
+          <a href="images/dashboard-preview.png" aria-label="View the sample dashboard at full size">
+            <img src="images/dashboard-preview.png" width="1040" height="506" alt="Completed copy showing 4 MB saved, data retained on the controller and a Download saved .bbl button">
+          </a>
+          <figcaption>The dashboard after a simulated 4 MB transfer.</figcaption>
+        </figure>
       </div>
     </section>
     <section id="procedure" class="section">
-      <h2 class="section-label">How it works</h2>
+      <h2 class="section-label">From the controller to your phone</h2>
       <div class="steps">
-        <div class="step"><span class="step-num">01</span><h3 class="step-title">Power the Pi</h3><p class="step-body">Use the PWR IN port and join the Pi’s Wi-Fi on your phone.</p></div>
-        <div class="step"><span class="step-num">02</span><h3 class="step-title">Connect the controller</h3><p class="step-body">Stop recording, then plug the controller into the USB data port. The Pi starts a copy to its microSD card.</p></div>
-        <div class="step"><span class="step-num">03</span><h3 class="step-title">Check the result</h3><p class="step-body">The dashboard shows progress, then the saved size and whether the controller kept its data.</p></div>
-        <div class="step"><span class="step-num">04</span><h3 class="step-title">Download your logs</h3><p class="step-body">Save the .bbl to your phone. To inspect a flight, load the file in the Betaflight App’s Blackbox Viewer.</p></div>
+        <div class="step"><span class="step-num">01</span><h3 class="step-title">Copy the flash</h3><p class="step-body">Stop recording and plug the controller into the Pi’s USB data port. The copy starts automatically.</p></div>
+        <div class="step"><span class="step-num">02</span><h3 class="step-title">See what’s new</h3><p class="step-body">Earlier flights can appear in later copies. The dashboard can recognise a repeat copy or a new recording header.</p></div>
+        <div class="step"><span class="step-num">03</span><h3 class="step-title">Make a field note</h3><p class="step-body">Give the controller a nickname and jot down what you noticed on that flight while it’s still fresh.</p></div>
+        <div class="step"><span class="step-num">04</span><h3 class="step-title">Take the logs home</h3><p class="step-body">Download a .bbl to open in the Betaflight App’s Blackbox Viewer, or export several recordings and their notes in one ZIP.</p></div>
       </div>
     </section>
     <section class="section" id="compatibility">
       <h2 class="section-label">Compatibility</h2>
       <div class="compatibility-copy">
-        <p><strong>Betaflight with internal SPI flash</strong> is the target for the Pi Zero W and Zero 2 W. A pilot opened an 8 MiB recording on an earlier build and also reported losing Wi-Fi after unplugging the controller. Repeating that sequence on the current image is still a field test for each Pi model.</p>
+        <p>LogFalcon targets <strong>Betaflight controllers that record to internal SPI flash</strong>, paired with a Pi Zero W or Zero 2 W. Field checks on this image are still open for both Pi models.</p>
         <p>iNav copying is disabled. Controller-side SD cards and ArduPilot are unsupported.</p>
       </div>
       <a class="text-link" href="guide.html#compatibility">Read the limitations →</a>
@@ -53,7 +60,7 @@
       <ul class="equipment-list">
         <li>Pi Zero W or Zero 2 W</li><li>16 GB+ microSD card</li><li>5 V USB supply</li><li>OTG adapter and data cable</li><li>Betaflight FC with SPI flash</li>
       </ul>
-      <p class="section-intro">The setup guide covers flashing an image, checking the settings that keep your recordings and confirming a first download.</p>
+      <p class="section-intro">To try this version, build its SD image from source and verify the checksum before flashing a spare card. The guide walks you through the build and your first download.</p>
       <a class="btn-primary" href="guide.html#setup">Open the setup guide</a>
     </section>
   </main>
